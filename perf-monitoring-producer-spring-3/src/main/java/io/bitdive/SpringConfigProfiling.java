@@ -11,8 +11,8 @@ import org.springframework.web.reactive.function.client.WebClient;
 @EnableScheduling
 public class SpringConfigProfiling {
     @Bean
-    public RepositoryInterceptor repositoryInterceptor(){
-      return   new RepositoryInterceptor();
+    public RepositoryInterceptor repositoryInterceptor() {
+        return new RepositoryInterceptor();
     }
 
     @Bean

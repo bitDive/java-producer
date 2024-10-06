@@ -5,12 +5,11 @@ import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.ContextManager;
 import io.bitdive.parent.trasirovka.agent.utils.ReflectionUtils;
 import org.aspectj.lang.ProceedingJoinPoint;
+import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
-import org.aspectj.lang.annotation.Pointcut;
 import org.aspectj.lang.reflect.MethodSignature;
 
 import java.util.Optional;
-
 
 import static io.bitdive.parent.trasirovka.agent.utils.DataUtils.*;
 import static io.bitdive.service.MessageService.sendMessage;
@@ -18,7 +17,7 @@ import static io.bitdive.service.MessageService.sendMessage;
 @Aspect
 public class RepositoryInterceptor {
 
-   @Pointcut("execution(* org.springframework.data.repository.Repository+.*(..))")
+    @Around("execution(* org.springframework.data.repository.Repository+.*(..))")
     public Object aroundRepositoryMethods(ProceedingJoinPoint joinPoint) throws Throwable {
         String UUIDMessage = UuidCreator.getTimeBased().toString();
         Object retVal = null;
