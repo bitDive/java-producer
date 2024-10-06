@@ -1,0 +1,27 @@
+application:
+  moduleName: module1
+  serviceName: config-profiling
+  packedScanner: default
+
+messageBroker:
+  bootstrapServers: localhost:29092
+
+monitoring:
+  logLevel: INFO
+  monitoringArgumentMethod: false
+  monitoringReturnMethod: false
+  monitoringStaticMethod: false
+  monitoringOnlySpringComponent: true
+  sendMonitoringFiles:
+    serverConsumer:
+      url: http://localhost:8080
+      proxy:
+        url: http://localhost:8080
+        login: admin
+        password: admin
+    schedulerTimer: 10000
+  pathMonitoringFilesSave: /monitoringFiles
+
+authorisation:
+  token: 34geg54gb4
+
