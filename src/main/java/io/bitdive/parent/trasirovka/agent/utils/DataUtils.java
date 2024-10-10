@@ -5,7 +5,6 @@ import io.bitdive.parent.anotations.NotMonitoringParamsClass;
 import io.bitdive.parent.dto.ParamMethodDto;
 import io.bitdive.parent.parserConfig.YamlParserConfig;
 
-
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -45,7 +44,7 @@ public class DataUtils {
     }
 
     public static List<ParamMethodDto> paramConvertToKafkaMess(Object[] objects) {
-        ArrayList bufRet = new ArrayList<ParamMethodDto>();
+        ArrayList<ParamMethodDto> bufRet = new ArrayList<>();
         int index = 0;
         for (Object object : objects) {
             NotMonitoringParamsClass notMonitoringClass= object.getClass().getAnnotation(NotMonitoringParamsClass.class);

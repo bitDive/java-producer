@@ -26,18 +26,18 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Service
-public class LogSenderService {
+public class MonitoringSenderService {
 
 
     private final WebClient webClient;
 
-    public LogSenderService(WebClient webClient) {
+    public MonitoringSenderService(WebClient webClient) {
         this.webClient = webClient;
         startFileMonitoring();
     }
 
     private void startFileMonitoring() {
-        Flux.interval(Duration.ZERO, Duration.ofSeconds(10)) // Adjusted interval for readability
+        Flux.interval(Duration.ZERO, Duration.ofSeconds(YamlParserConfig.getProfilingConfig().getMonitoring().getSendMonitoringFiles().getSchedulerTimer())) // Adjusted interval for readability
                 .flatMap(tick -> scanAndSendFiles())
                 .onErrorContinue((throwable, obj) -> {
                     if (LoggerStatusContent.isErrorsOrDebug()) {

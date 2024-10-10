@@ -1,7 +1,6 @@
 package io.bitdive.parent.trasirovka.agent.utils;
 
 import io.bitdive.parent.dto.TraceMethodContext;
-import lombok.var;
 
 import java.util.Deque;
 import java.util.Optional;
@@ -15,7 +14,7 @@ public class ContextManager {
     }
 
     public static void setContextThread(TraceMethodContext value) {
-        var traceMethodContext= new TraceMethodContext();
+        TraceMethodContext traceMethodContext = new TraceMethodContext();
         traceMethodContext.setTraceId(value.getTraceId());
         traceMethodContext.setSpanId(value.getSpanId());
         if (!value.getMethodCallContextQueue().isEmpty()) {

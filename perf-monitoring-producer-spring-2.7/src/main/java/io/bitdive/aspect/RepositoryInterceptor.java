@@ -15,6 +15,7 @@ import static io.bitdive.parent.trasirovka.agent.utils.DataUtils.*;
 import static io.bitdive.service.MessageService.sendMessage;
 
 @Aspect
+
 public class RepositoryInterceptor {
 
     @Around("execution(* org.springframework.data.repository.Repository+.*(..))")

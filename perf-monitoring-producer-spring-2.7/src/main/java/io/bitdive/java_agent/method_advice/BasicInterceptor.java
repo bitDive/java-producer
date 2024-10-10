@@ -39,7 +39,6 @@ public class BasicInterceptor {
             String UUIDMessage = UuidCreator.getTimeBased().toString();;
 
             String strMessage =
-                    "AFTER__" +
                     YamlParserConfig.getProfilingConfig().getApplication().getModuleName() + "__" +
                     YamlParserConfig.getProfilingConfig().getApplication().getServiceName() + "__" +
                     UUIDMessage + "__" +
@@ -82,7 +81,6 @@ public class BasicInterceptor {
             }
 
             String strMessage =
-                    "BEFORE__" +
                     ContextManager.getMessageIdQueue() + "__" +
                     getLocalDateTimeJackson() + "__" +
                     errorCallMessage + "__" +

@@ -51,11 +51,6 @@ public class YamlParserConfig {
             }
         }
 
-        if (overrideConfig.getMessageBroker() != null) {
-            if (overrideConfig.getMessageBroker().getBootstrapServers() != null) {
-                baseConfig.getMessageBroker().setBootstrapServers(overrideConfig.getMessageBroker().getBootstrapServers());
-            }
-        }
 
         if (overrideConfig.getMonitoring() != null) {
             if (overrideConfig.getMonitoring().getLogLevel() != null) {
@@ -73,11 +68,7 @@ public class YamlParserConfig {
             if (overrideConfig.getMonitoring().getMonitoringOnlySpringComponent() != null) {
                 baseConfig.getMonitoring().setMonitoringOnlySpringComponent(overrideConfig.getMonitoring().getMonitoringOnlySpringComponent());
             }
-            if (overrideConfig.getMonitoring().getPathMonitoringFilesSave() != null) {
-                baseConfig.getMonitoring().setPathMonitoringFilesSave(overrideConfig.getMonitoring().getPathMonitoringFilesSave());
-            }
 
-            // Merging SendMonitoringFilesConfig
             if (overrideConfig.getMonitoring().getSendMonitoringFiles() != null) {
                 if (overrideConfig.getMonitoring().getSendMonitoringFiles().getSchedulerTimer() != null) {
                     baseConfig.getMonitoring().getSendMonitoringFiles().setSchedulerTimer(overrideConfig.getMonitoring().getSendMonitoringFiles().getSchedulerTimer());
@@ -88,12 +79,19 @@ public class YamlParserConfig {
                         baseConfig.getMonitoring().getSendMonitoringFiles().getServerConsumer().setUrl(overrideConfig.getMonitoring().getSendMonitoringFiles().getServerConsumer().getUrl());
                     }
 
-                    if (overrideConfig.getMonitoring().getSendMonitoringFiles().getServerConsumer().getProxy() != null) {
-                        if (overrideConfig.getMonitoring().getSendMonitoringFiles().getServerConsumer().getProxy().getUrl() != null) {
-                            baseConfig.getMonitoring().getSendMonitoringFiles().getServerConsumer().getProxy().setUrl(overrideConfig.getMonitoring().getSendMonitoringFiles().getServerConsumer().getProxy().getUrl());
-                        }
-                        if (overrideConfig.getMonitoring().getSendMonitoringFiles().getServerConsumer().getProxy().getLogin() != null) {
-                            baseConfig.getMonitoring().getSendMonitoringFiles().getServerConsumer().getProxy().setLogin(overrideConfig.getMonitoring().getSendMonitoringFiles().getServerConsumer().getProxy().getLogin());
+                    if (overrideConfig.getMonitoring().getSendMonitoringFiles().getServerConsumer().getProxy() != null &&
+                            overrideConfig.getMonitoring().getSendMonitoringFiles().getServerConsumer().getProxy().getHost() != null &&
+                            overrideConfig.getMonitoring().getSendMonitoringFiles().getServerConsumer().getProxy().getType() != null &&
+                            overrideConfig.getMonitoring().getSendMonitoringFiles().getServerConsumer().getProxy().getPort() != null
+
+                    ) {
+
+                        baseConfig.getMonitoring().getSendMonitoringFiles().getServerConsumer().getProxy().setHost(overrideConfig.getMonitoring().getSendMonitoringFiles().getServerConsumer().getProxy().getHost());
+                        baseConfig.getMonitoring().getSendMonitoringFiles().getServerConsumer().getProxy().setType(overrideConfig.getMonitoring().getSendMonitoringFiles().getServerConsumer().getProxy().getType());
+                        baseConfig.getMonitoring().getSendMonitoringFiles().getServerConsumer().getProxy().setPort(overrideConfig.getMonitoring().getSendMonitoringFiles().getServerConsumer().getProxy().getPort());
+
+                        if (overrideConfig.getMonitoring().getSendMonitoringFiles().getServerConsumer().getProxy().getUsername() != null) {
+                            baseConfig.getMonitoring().getSendMonitoringFiles().getServerConsumer().getProxy().setUsername(overrideConfig.getMonitoring().getSendMonitoringFiles().getServerConsumer().getProxy().getUsername());
                         }
                         if (overrideConfig.getMonitoring().getSendMonitoringFiles().getServerConsumer().getProxy().getPassword() != null) {
                             baseConfig.getMonitoring().getSendMonitoringFiles().getServerConsumer().getProxy().setPassword(overrideConfig.getMonitoring().getSendMonitoringFiles().getServerConsumer().getProxy().getPassword());

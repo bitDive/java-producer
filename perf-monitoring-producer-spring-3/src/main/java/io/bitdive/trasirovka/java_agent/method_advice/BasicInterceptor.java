@@ -12,13 +12,14 @@ import net.bytebuddy.implementation.bytecode.assign.Assigner;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.util.*;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
-
 import static io.bitdive.parent.trasirovka.agent.utils.DataUtils.*;
-import static io.bitdive.parent.trasirovka.agent.utils.DataUtils.getLocalDateTimeJackson;
 import static io.bitdive.service.MessageService.sendMessage;
 
 public class BasicInterceptor {
@@ -38,7 +39,6 @@ public class BasicInterceptor {
             String UUIDMessage = UuidCreator.getTimeBased().toString();;
 
             String strMessage =
-                    "AFTER__" +
                     YamlParserConfig.getProfilingConfig().getApplication().getModuleName() + "__" +
                     YamlParserConfig.getProfilingConfig().getApplication().getServiceName() + "__" +
                     UUIDMessage + "__" +
@@ -81,7 +81,6 @@ public class BasicInterceptor {
             }
 
             String strMessage =
-                    "BEFORE__" +
                     ContextManager.getMessageIdQueue() + "__" +
                     getLocalDateTimeJackson() + "__" +
                     errorCallMessage + "__" +

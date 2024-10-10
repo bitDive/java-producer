@@ -8,7 +8,6 @@ import lombok.Setter;
 public class ProfilingConfig {
 
     private ApplicationConfig application;
-    private MessageBrokerConfig messageBroker;
     private MonitoringConfig monitoring;
     private AuthorisationConfig authorisation;
 
@@ -21,7 +20,6 @@ public class ProfilingConfig {
         private Boolean monitoringStaticMethod;
         private Boolean monitoringOnlySpringComponent;
         private SendMonitoringFilesConfig sendMonitoringFiles;
-        private String pathMonitoringFilesSave;
 
         @Getter
         @Setter
@@ -38,8 +36,10 @@ public class ProfilingConfig {
                 @Getter
                 @Setter
                 public static class ProxyConfig {
-                    private String url;
-                    private String login;
+                    private String type; /*HTTP,SOCKS4,SOCKS5;*/
+                    private String host;
+                    private Integer port;
+                    private String username;
                     private String password;
                 }
             }
@@ -52,12 +52,6 @@ public class ProfilingConfig {
         private String moduleName;
         private String serviceName;
         private String packedScanner;
-    }
-
-    @Getter
-    @Setter
-    public static class MessageBrokerConfig {
-        private String bootstrapServers;
     }
 
     @Getter

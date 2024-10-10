@@ -28,7 +28,7 @@ public class ByteBuddyAgentBasic {
         new AgentBuilder.Default()
                 .type(ElementMatchers.nameContains(YamlParserConfig.getProfilingConfig().getApplication().getPackedScanner())
                         .and( getSpringComponentMatcher())
-                        .and(ElementMatchers.not(ElementMatchers.isAnnotatedWith(ElementMatchers.named("com.loggerAndTraser.anotations.NotMonitoring"))))
+                        .and(ElementMatchers.not(ElementMatchers.isAnnotatedWith(ElementMatchers.named("io.bitdive.parent.anotations.NotMonitoring"))))
                         .and(ElementMatchers.not(ElementMatchers.isAnnotatedWith(ElementMatchers.nameEndsWith("Configuration"))))
                         .and(ElementMatchers.not(ElementMatchers.isAnnotatedWith(ElementMatchers.nameEndsWith("RefreshScope"))))
                         .and(ElementMatchers.not(ElementMatchers.isAnnotatedWith(ElementMatchers.nameEndsWith("ConfigurationProperties"))))

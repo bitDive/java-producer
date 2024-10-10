@@ -7,7 +7,7 @@
 
     <groupId>io.bitdive</groupId>
     <artifactId>bitdive-producer-spring-2</artifactId>
-    <version>0.0.1-SHAPSHOT</version>
+    <version>0.0.2-SHAPSHOT</version>
     <name>producer-for-spring-2</name>
 
     <parent>
@@ -16,6 +16,31 @@
         <version>2.7.14</version>
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
+
+    <licenses>
+        <license>
+            <name>BitDive.io Agent Proprietary License</name>
+            <url>https://bitdive.io/docs/license</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
+    <description>library is a module for the system for collecting profiling information for spring 2</description>
+
+    <url>bitdive.io</url>
+    <scm>
+        <url>https://github.com/username/my-project</url>
+        <connection>scm:git:git://github.com/username/my-project.git</connection>
+        <developerConnection>scm:git:ssh://github.com/username/my-project.git</developerConnection>
+
+    </scm>
+    <developers>
+        <developer>
+            <name>FrolikovEA</name>
+            <email>ef@bitdive.io</email>
+        </developer>
+        <!-- Можно добавить несколько разработчиков -->
+    </developers>
 
     <dependencies>
 
@@ -68,61 +93,74 @@
 
     <dependency>
         <groupId>io.bitdive</groupId>
-        <artifactId>JavaProducer</artifactId>
-        <version>0.0.1-SNAPSHOT</version>
-        <scope>compile</scope>
+        <artifactId>java-producer-parent</artifactId>
+        <version>0.0.2</version>
     </dependency>
 
 </dependencies>
 
-<build>
-    <plugins>
-        <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-compiler-plugin</artifactId>
-            <version>3.13.0</version>
-            <configuration>
-                <source>1.8</source>
-                <target>1.8</target>
-            </configuration>
-        </plugin>
+    <build>
+        <plugins>
+            <!-- Подпись артефактов GPG -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-gpg-plugin</artifactId>
+                <version>1.6</version>
+                <executions>
+                    <execution>
+                        <id>sign-artifacts</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>sign</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <!-- Явно указать исполняемый файл GPG, если необходимо -->
+                    <executable>C:\Program Files (x86)\GnuPG\bin\gpg.exe</executable>
+                </configuration>
+            </plugin>
 
-        <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-javadoc-plugin</artifactId>
-            <version>3.3.1</version>
-            <configuration>
-                <source>1.8</source>
-                <encoding>UTF-8</encoding>
-                <docencoding>UTF-8</docencoding>
-                <charset>UTF-8</charset>
-                <locale>en_US</locale>
-            </configuration>
-        </plugin>
-        <plugin>
-            <groupId>org.sonatype.central</groupId>
-            <artifactId>central-publishing-maven-plugin</artifactId>
-            <version>0.5.0</version>
-            <extensions>true</extensions>
-            <configuration>
-                <publishingServerId>central</publishingServerId>
-            </configuration>
-        </plugin>
+            <!-- Публикация артефактов -->
+            <plugin>
+                <groupId>org.sonatype.central</groupId>
+                <artifactId>central-publishing-maven-plugin</artifactId>
+                <version>0.6.0</version>
+                <extensions>true</extensions>
+                <configuration>
+                    <publishingServerId>central</publishingServerId>
+                </configuration>
+            </plugin>
 
-        <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-source-plugin</artifactId>
-            <version>2.2.1</version>
-            <executions>
-                <execution>
-                    <id>attach-sources</id>
-                    <goals>
-                        <goal>jar-no-fork</goal>
-                    </goals>
-                </execution>
-            </executions>
-        </plugin>
-    </plugins>
-</build>
+            <!-- Плагин для источников и Javadoc -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-source-plugin</artifactId>
+                <version>3.2.1</version>
+                <executions>
+                    <execution>
+                        <id>attach-sources</id>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <version>3.2.0</version>
+                <executions>
+                    <execution>
+                        <id>attach-javadocs</id>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 
 </project>
