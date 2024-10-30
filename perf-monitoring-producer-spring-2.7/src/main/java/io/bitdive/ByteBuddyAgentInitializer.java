@@ -1,13 +1,15 @@
 package io.bitdive;
 
-
-import io.bitdive.java_agent.byte_buddy_agent.ByteBuddyAgentBasic;
-import io.bitdive.java_agent.byte_buddy_agent.ByteBuddyAgentRequestWeb;
-import io.bitdive.java_agent.byte_buddy_agent.ByteBuddyAgentResponseWeb;
+import io.bitdive.parent.message_producer.LibraryLoggerConfig;
 import io.bitdive.parent.parserConfig.YamlParserConfig;
+import io.bitdive.parent.trasirovka.agent.byte_buddy_agent.ByteBuddyAgentBasic;
+import io.bitdive.parent.trasirovka.agent.byte_buddy_agent.ByteBuddyAgentSql;
 import io.bitdive.parent.trasirovka.agent.byte_buddy_agent.ByteBuddyAgentThread;
 import io.bitdive.parent.trasirovka.agent.byte_buddy_agent.ByteBuddyAgentThreadCreator;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
+import io.bitdive.trasirovka.java_agent.byte_buddy_agent.ByteBuddyAgentCatalinaResponse;
+import io.bitdive.trasirovka.java_agent.byte_buddy_agent.ByteBuddyAgentRequestWeb;
+import io.bitdive.trasirovka.java_agent.byte_buddy_agent.ByteBuddyAgentResponseWeb;
 import net.bytebuddy.agent.ByteBuddyAgent;
 import org.springframework.context.ApplicationContextInitializer;
 import org.springframework.context.ConfigurableApplicationContext;
@@ -30,6 +32,9 @@ public class ByteBuddyAgentInitializer implements ApplicationContextInitializer<
             ByteBuddyAgentRequestWeb.init();
             ByteBuddyAgentResponseWeb.init();
             ByteBuddyAgentThreadCreator.init();
+            ByteBuddyAgentSql.init();
+            LibraryLoggerConfig.init();
+            ByteBuddyAgentCatalinaResponse.init();
 
             initializeAgent = true;
         } catch (Exception e) {

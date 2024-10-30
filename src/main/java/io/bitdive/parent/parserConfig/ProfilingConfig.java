@@ -19,11 +19,29 @@ public class ProfilingConfig {
         private Boolean monitoringReturnMethod;
         private Boolean monitoringStaticMethod;
         private Boolean monitoringOnlySpringComponent;
-        private SendMonitoringFilesConfig sendMonitoringFiles;
+        private MonitoringSendFilesConfig sendFiles;
+        private MonitoringDataFile dataFile;
+        private Serialization serialization;
 
         @Getter
         @Setter
-        public static class SendMonitoringFilesConfig {
+        public static class Serialization {
+            private String[] excludedPackages;
+            private Integer maxElementCollection;
+        }
+
+        @Getter
+        @Setter
+        public static class MonitoringDataFile {
+            private String path;
+            private Integer timerConvertForSend;
+            private Integer fileStorageTime;
+
+        }
+
+        @Getter
+        @Setter
+        public static class MonitoringSendFilesConfig {
             private ServerConsumerConfig serverConsumer;
             private Long schedulerTimer;
 
@@ -36,7 +54,6 @@ public class ProfilingConfig {
                 @Getter
                 @Setter
                 public static class ProxyConfig {
-                    private String type; /*HTTP,SOCKS4,SOCKS5;*/
                     private String host;
                     private Integer port;
                     private String username;
@@ -51,7 +68,7 @@ public class ProfilingConfig {
     public static class ApplicationConfig {
         private String moduleName;
         private String serviceName;
-        private String packedScanner;
+        private String[] packedScanner;
     }
 
     @Getter

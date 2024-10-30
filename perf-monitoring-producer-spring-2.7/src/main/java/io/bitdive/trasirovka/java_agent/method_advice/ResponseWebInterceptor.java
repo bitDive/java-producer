@@ -1,4 +1,5 @@
-package io.bitdive.java_agent.method_advice;
+package io.bitdive.trasirovka.java_agent.method_advice;
+
 
 import io.bitdive.parent.trasirovka.agent.utils.ContextManager;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
@@ -17,7 +18,7 @@ public class ResponseWebInterceptor {
                 headersField.setAccessible(true);
                 HttpHeaders headers = (HttpHeaders) headersField.get(thisObject);
                 headers.add("x-BitDiv-custom-span-id", ContextManager.getSpanId());
-                headers.add("x-BitDiv-custom-parent-message-id", ContextManager.getMessageIdQueue());
+                headers.add("x-BitDiv-custom-parent-message-id", ContextManager.getMessageIdQueueNew());
             }
         } catch (Exception e) {
             if (LoggerStatusContent.isErrorsOrDebug()) {

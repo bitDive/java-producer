@@ -1,6 +1,6 @@
-package io.bitdive.java_agent.byte_buddy_agent;
+package io.bitdive.trasirovka.java_agent.byte_buddy_agent;
 
-import io.bitdive.java_agent.method_advice.ResponseWebInterceptor;
+import io.bitdive.trasirovka.java_agent.method_advice.ResponseWebInterceptor;
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.matcher.ElementMatchers;

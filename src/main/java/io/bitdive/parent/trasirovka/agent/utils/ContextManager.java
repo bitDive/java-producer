@@ -13,25 +13,40 @@ public class ContextManager {
         getContestThreadLocalOptional().ifPresent(traceMethodContext -> traceMethodContext.setSpanId(spanId));
     }
 
+    public static void setParentMessageIdOtherService(String parentId) {
+        getContestThreadLocalOptional().ifPresent(traceMethodContext -> traceMethodContext.setParentIdForRest(parentId));
+    }
+
     public static void setContextThread(TraceMethodContext value) {
         TraceMethodContext traceMethodContext = new TraceMethodContext();
         traceMethodContext.setTraceId(value.getTraceId());
         traceMethodContext.setSpanId(value.getSpanId());
+
+        traceMethodContext.setParentIdForRest(value.getParentIdForRest());
+
+        traceMethodContext.setUrlStart(value.getUrlStart());
+        traceMethodContext.setStartMessageId(value.getStartMessageId());
         if (!value.getMethodCallContextQueue().isEmpty()) {
             traceMethodContext.getMethodCallContextQueue().offerLast(value.getMethodCallContextQueue().peekLast());
         }
         contextThreadLocal.set(traceMethodContext);
     }
 
-    public static void setParentMessageIdOtherService(String parentId) {
-        getContestThreadLocalOptional().ifPresent(traceMethodContext -> {
-                    if (traceMethodContext.getMethodCallContextQueue().isEmpty()) {
-                        traceMethodContext.getMethodCallContextQueue().offerLast(parentId);
-                    }
-                }
-        );
+    public static void setMessageStart(String startId) {
+        getContestThreadLocalOptional().ifPresent(traceMethodContext -> traceMethodContext.setStartMessageId(startId));
     }
 
+    public static String getMessageStart() {
+        return getContestThreadLocalOptional().map(TraceMethodContext::getStartMessageId).orElse("null");
+    }
+
+    public static void setUrlStart(String urlStart) {
+        getContestThreadLocalOptional().ifPresent(traceMethodContext -> traceMethodContext.setUrlStart(urlStart));
+    }
+
+    public static String getUrlStart() {
+        return getContestThreadLocalOptional().map(TraceMethodContext::getUrlStart).orElse("null");
+    }
 
     public static TraceMethodContext getContext() {
         return contextThreadLocal.get();
@@ -46,20 +61,30 @@ public class ContextManager {
         return getContestThreadLocalOptional().map(TraceMethodContext::getSpanId).orElse(null);
     }
 
-    public static String getMessageIdQueue() {
+    private static String getMessageIdQueue() {
         return getContestThreadLocalOptional()
                 .map(TraceMethodContext::getMethodCallContextQueue)
                 .map(Deque::peekLast)
-                .orElse(null);
+                .orElse("");
     }
 
-
-
-    public static String getKafkaMessageQueue() {
+    public static String getMessageIdQueueNew() {
         return getContestThreadLocalOptional()
                 .map(TraceMethodContext::getMethodCallContextQueue)
                 .map(Deque::peekLast)
-                .orElseThrow(() -> new RuntimeException("KafkaMessageId not found"));
+                .orElse("");
+    }
+
+    public static String getParentIdMessageIdQueue() {
+        return getContestThreadLocalOptional()
+                .filter(traceMethodContext -> !traceMethodContext.getMethodCallContextQueue().isEmpty())
+                .map(TraceMethodContext::getMethodCallContextQueue)
+                .map(Deque::peekLast)
+                .orElse(getContestThreadLocalOptional().map(TraceMethodContext::getParentIdForRest).orElse(""));
+    }
+
+    public static boolean isMessageIdQueueEmpty() {
+        return getMessageIdQueue().isEmpty();
     }
 
     public static void setMethodCallContextQueue(String methodCallId) {

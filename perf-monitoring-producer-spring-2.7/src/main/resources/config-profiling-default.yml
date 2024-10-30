@@ -1,7 +1,7 @@
 application:
   moduleName: module1
   serviceName: config-profiling
-  packedScanner: default
+  packedScanner: [ default ]
 
 monitoring:
   logLevel: INFO
@@ -9,10 +9,17 @@ monitoring:
   monitoringReturnMethod: false
   monitoringStaticMethod: false
   monitoringOnlySpringComponent: true
-  sendMonitoringFiles:
+  dataFile:
+    path: monitoringData
+    timerConvertForSend: 10
+    fileStorageTime: 30
+  sendFiles:
     serverConsumer:
       url: http://localhost:8080
-    schedulerTimer: 10000
+    schedulerTimer: 1000
+  serialization:
+    excludedPackages: [ "com.sun.", "sun.", "org.apache.", "org.springframework.", "com.zaxxer." ]
+    maxElementCollection: 50
 
 authorisation:
   token: 34geg54gb4
