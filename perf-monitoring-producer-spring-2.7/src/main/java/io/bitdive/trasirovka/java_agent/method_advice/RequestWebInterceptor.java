@@ -10,8 +10,11 @@ public class RequestWebInterceptor {
     @Advice.OnMethodEnter
     public static void onMethodEnter(@Advice.Origin String method , @Advice.Argument(value = 0) javax.servlet.http.HttpServletRequest httpServletRequest) {
         try {
-            ContextManager.setMessageStart(UuidCreator.getTimeBased().toString());
-            ContextManager.setUrlStart(httpServletRequest.getRequestURL().toString());
+            if (ContextManager.getMessageStart().isEmpty()) {
+                ContextManager.setMessageStart(UuidCreator.getTimeBased().toString());
+                ContextManager.setUrlStart(httpServletRequest.getRequestURL().toString());
+            }
+
             if (!ObjectUtils.isEmpty(httpServletRequest.getHeader("x-BitDiv-custom-span-id"))) {
                 ContextManager.setSpanID(httpServletRequest.getHeader("x-BitDiv-custom-span-id"));
             }

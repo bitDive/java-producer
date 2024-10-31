@@ -37,7 +37,7 @@ public class ContextManager {
     }
 
     public static String getMessageStart() {
-        return getContestThreadLocalOptional().map(TraceMethodContext::getStartMessageId).orElse("null");
+        return getContestThreadLocalOptional().map(TraceMethodContext::getStartMessageId).orElse("");
     }
 
     public static void setUrlStart(String urlStart) {

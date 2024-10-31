@@ -1,4 +1,4 @@
-package io.bitdive.parent.trasirovka.agent.method_advice.sqlParametrs;
+package io.bitdive.parent.trasirovka.agent.utils;
 
 import java.lang.reflect.Field;
 import java.sql.PreparedStatement;

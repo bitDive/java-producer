@@ -40,7 +40,8 @@ public class BasicInterceptor {
             String UUIDMessage = null;
 
             String urlVal = "";
-            if (flagNewSpan.getVal() && MethodTypeEnum.getListWebMethodType().contains(flagNewSpan.getKey())) {
+            if (flagNewSpan.getVal() && (flagNewSpan.getKey() != MethodTypeEnum.METHOD && flagNewSpan.getKey() != MethodTypeEnum.SCHEDULER)) {
+                System.out.println(ContextManager.getMessageStart());
                 UUIDMessage = ContextManager.getMessageStart();
                 urlVal = ContextManager.getUrlStart();
             } else {

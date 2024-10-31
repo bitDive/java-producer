@@ -1,8 +1,8 @@
 package io.bitdive.parent.trasirovka.agent.method_advice;
 
-import io.bitdive.parent.trasirovka.agent.method_advice.sqlParametrs.SQLUtils;
 import io.bitdive.parent.trasirovka.agent.utils.ContextManager;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
+import io.bitdive.parent.trasirovka.agent.utils.SQLUtils;
 import net.bytebuddy.asm.Advice;
 
 import java.lang.reflect.Method;
