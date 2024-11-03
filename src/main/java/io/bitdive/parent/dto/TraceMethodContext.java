@@ -1,9 +1,9 @@
 package io.bitdive.parent.dto;
 
+import com.github.f4b6a3.uuid.UuidCreator;
 import lombok.Getter;
 import lombok.Setter;
 
-import java.util.UUID;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.LinkedBlockingDeque;
 
@@ -11,8 +11,10 @@ import java.util.concurrent.LinkedBlockingDeque;
 @Setter
 public class TraceMethodContext {
     public TraceMethodContext() {
-        traceId = UUID.randomUUID().toString();
-        spanId = UUID.randomUUID().toString();
+        traceId = UuidCreator.getTimeBased().toString();
+        spanId = UuidCreator.getTimeBased().toString();
+        startMessageId = UuidCreator.getTimeBased().toString();
+
         methodCallContextQueue = new LinkedBlockingDeque<>();
         parentIdForRest = null;
 

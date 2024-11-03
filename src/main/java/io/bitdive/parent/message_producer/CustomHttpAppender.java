@@ -219,7 +219,6 @@ public class CustomHttpAppender extends AbstractAppender {
             scheduler.awaitTermination(5, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             LOGGER.warn("Прерывание при остановке планировщика", e);
-            Thread.currentThread().interrupt();
         }
     }
 }
