@@ -25,6 +25,7 @@ public class ByteBuddyAgentCatalinaResponse {
 
         @Advice.OnMethodEnter
         public static void onEnter(@Advice.This Object responseObj) {
+
             try {
                 Class<?> requestClass = responseObj.getClass();
                 Method getResponseMethod = requestClass.getMethod("getResponse");

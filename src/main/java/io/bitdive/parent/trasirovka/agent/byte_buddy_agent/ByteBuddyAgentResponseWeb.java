@@ -31,6 +31,7 @@ public class ByteBuddyAgentResponseWeb {
         @Advice.OnMethodEnter
         public static void onEnter(@Advice.Argument(0) Object request) {
             try {
+                ContextManager.createNewRequest();
                 Class<?> requestClass = request.getClass();
                 java.lang.reflect.Method getHeaderMethod = requestClass.getMethod("getHeader", String.class);
                 String headerMessage_Id = (String) getHeaderMethod.invoke(request, "x-BitDiv-custom-parent-message-id");

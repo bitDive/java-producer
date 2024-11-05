@@ -7,14 +7,14 @@
 
     <groupId>io.bitdive</groupId>
     <artifactId>bitdive-producer-spring-3</artifactId>
-    <version>0.0.3-SHAPSHOT</version>
+    <version>0.0.4-SHAPSHOT</version>
     <name>producer-for-spring-3</name>
 
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
         <version>3.2.0</version>
-        <relativePath/> <!-- lookup parent from repository -->
+        <relativePath/>
     </parent>
 
     <licenses>
@@ -39,7 +39,6 @@
             <name>FrolikovEA</name>
             <email>ef@bitdive.io</email>
         </developer>
-        <!-- Можно добавить несколько разработчиков -->
     </developers>
 
     <dependencies>
@@ -96,7 +95,7 @@
         <dependency>
             <groupId>io.bitdive</groupId>
             <artifactId>java-producer-parent</artifactId>
-            <version>0.0.3</version>
+            <version>0.0.4</version>
         </dependency>
 
 
@@ -104,7 +103,6 @@
 
     <build>
         <plugins>
-            <!-- Подпись артефактов GPG -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-gpg-plugin</artifactId>
@@ -119,12 +117,10 @@
                     </execution>
                 </executions>
                 <configuration>
-                    <!-- Явно указать исполняемый файл GPG, если необходимо -->
                     <executable>C:\Program Files (x86)\GnuPG\bin\gpg.exe</executable>
                 </configuration>
             </plugin>
 
-            <!-- Публикация артефактов -->
             <plugin>
                 <groupId>org.sonatype.central</groupId>
                 <artifactId>central-publishing-maven-plugin</artifactId>
@@ -135,7 +131,6 @@
                 </configuration>
             </plugin>
 
-            <!-- Плагин для источников и Javadoc -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-source-plugin</artifactId>

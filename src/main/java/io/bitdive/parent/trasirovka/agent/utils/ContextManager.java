@@ -9,6 +9,10 @@ public class ContextManager {
 
     private static final ThreadLocal<TraceMethodContext> contextThreadLocal =ThreadLocal.withInitial(TraceMethodContext::new);
 
+    public static void createNewRequest() {
+        contextThreadLocal.set(new TraceMethodContext());
+    }
+
     public static void setSpanID(String spanId) {
         getContestThreadLocalOptional().ifPresent(traceMethodContext -> traceMethodContext.setSpanId(spanId));
     }

@@ -12,9 +12,10 @@ public class ByteBuddyAgentInitializer implements ApplicationContextInitializer<
     private static boolean initializeAgent = false;
     @Override
     public void initialize(ConfigurableApplicationContext applicationContext) {
-        if (initializeAgent) {
+        if (initializeAgent || isTestEnvironment()) {
             return;
         }
+
         YamlParserConfig.loadConfig();
         if (LoggerStatusContent.isDebug()) {
             System.out.println("ByteBuddyAgentInitializer initialize start");
@@ -35,6 +36,15 @@ public class ByteBuddyAgentInitializer implements ApplicationContextInitializer<
             if (LoggerStatusContent.isErrorsOrDebug()) {
                 System.out.println("ByteBuddyAgentInitializer initialize " + e.getMessage());
             }
+        }
+    }
+
+    private boolean isTestEnvironment() {
+        try {
+            Class.forName("org.junit.jupiter.api.Test");
+            return true;
+        } catch (ClassNotFoundException e) {
+            return false;
         }
     }
 }
