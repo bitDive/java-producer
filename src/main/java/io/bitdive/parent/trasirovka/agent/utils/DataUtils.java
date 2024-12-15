@@ -7,9 +7,17 @@ import io.bitdive.parent.parserConfig.YamlParserConfig;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 public class DataUtils {
 
+    public static String getaNullThrowable(Throwable thrown) {
+        return Optional.ofNullable(thrown)
+                .map(Throwable::getMessage)
+                .map(str -> str.replace("\n", "").replace("\r", ""))
+                .filter(s -> !s.equals("null"))
+                .orElse("");
+    }
     public static List<ParamMethodDto> paramConvert(Object[] objects){
         if (YamlParserConfig.getProfilingConfig().getMonitoring().getMonitoringArgumentMethod()) {
             return DataUtils.paramConvertToMess(objects);
@@ -23,7 +31,7 @@ public class DataUtils {
         if (YamlParserConfig.getProfilingConfig().getMonitoring().getMonitoringReturnMethod()) {
             return val;
         }
-        return new Object();
+        return null;
     }
 
     public static List<ParamMethodDto> paramConvertToMess(Object[] objects) {

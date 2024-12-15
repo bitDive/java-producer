@@ -7,7 +7,7 @@
 
     <groupId>io.bitdive</groupId>
     <artifactId>bitdive-producer-spring-3</artifactId>
-    <version>0.0.4-SHAPSHOT</version>
+    <version>0.0.14</version>
     <name>producer-for-spring-3</name>
 
     <parent>
@@ -95,7 +95,7 @@
         <dependency>
             <groupId>io.bitdive</groupId>
             <artifactId>java-producer-parent</artifactId>
-            <version>0.0.4</version>
+            <version>0.0.14</version>
         </dependency>
 
 

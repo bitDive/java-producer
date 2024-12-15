@@ -15,8 +15,7 @@ public class CustomSerializeConfig extends SerializeConfig {
             };
         }
 
-        String[] excludedPackages = YamlParserConfig.getProfilingConfig()
-                .getMonitoring().getSerialization().getExcludedPackages();
+        String[] excludedPackages = YamlParserConfig.getProfilingConfig().getMonitoring().getSerialization().getExcludedPackages();
         for (String pkg : excludedPackages) {
             if (clazz.getName().startsWith(pkg)) {
                 return (serializer, object, fieldName, fieldType, features) -> {

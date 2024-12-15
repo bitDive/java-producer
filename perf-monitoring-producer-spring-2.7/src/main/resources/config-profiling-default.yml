@@ -19,7 +19,7 @@ monitoring:
     schedulerTimer: 1000
   serialization:
     excludedPackages: [ "com.sun.", "sun.", "org.apache.", "org.springframework.", "com.zaxxer." ]
-    maxElementCollection: 50
+    maxElementCollection: 500
 
 authorisation:
   token: 34geg54gb4

@@ -19,12 +19,12 @@ import net.bytebuddy.matcher.ElementMatchers;
 
 import java.lang.reflect.Method;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.concurrent.CompletableFuture;
 
 import static io.bitdive.parent.message_producer.MessageService.sendMessageEnd;
 import static io.bitdive.parent.message_producer.MessageService.sendMessageStart;
-import static io.bitdive.parent.trasirovka.agent.utils.DataUtils.methodReturnConvert;
-import static io.bitdive.parent.trasirovka.agent.utils.DataUtils.paramConvert;
+import static io.bitdive.parent.trasirovka.agent.utils.DataUtils.*;
 import static io.bitdive.parent.utils.UtilsDataConvert.*;
 import static net.bytebuddy.matcher.ElementMatchers.*;
 
@@ -135,7 +135,7 @@ public class ByteBuddyAgentBasic {
                         method.getName(),
                         ContextManager.getTraceId(),
                         ContextManager.getSpanId(),
-                        LocalDateTime.now(),
+                        OffsetDateTime.now(),
                         ContextManager.getParentIdMessageIdQueue(),
                         flagNewSpan.getVal(),
                         ReflectionUtils.objectToString(paramConvert(args)),
@@ -146,7 +146,7 @@ public class ByteBuddyAgentBasic {
                 ContextManager.setMethodCallContextQueue(UUIDMessage);
             } catch (Exception e) {
                 if (LoggerStatusContent.isErrorsOrDebug())
-                    System.out.println("onMethodEnter " + method + " " + e.getMessage());
+                    System.err.println("onMethodEnter " + method + " " + e.getMessage());
             }
         }
 
@@ -170,15 +170,16 @@ public class ByteBuddyAgentBasic {
 
                 String errorCallMessage = "";
                 if (thrown != null) {
-                    errorCallMessage = thrown.getMessage();
+                    errorCallMessage = getaNullThrowable(thrown);
                 }
 
                 sendMessageEnd(
                         ContextManager.getMessageIdQueueNew(),
-                        LocalDateTime.now(),
+                        OffsetDateTime.now(),
                         errorCallMessage,
                         ReflectionUtils.objectToString(methodReturnConvert(retVal)),
-                        ContextManager.getTraceId()
+                        ContextManager.getTraceId(),
+                        ContextManager.getSpanId()
                 );
                 ContextManager.removeLastQueue();
 

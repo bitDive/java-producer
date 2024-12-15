@@ -36,10 +36,6 @@ public class ContextManager {
         contextThreadLocal.set(traceMethodContext);
     }
 
-    public static void setMessageStart(String startId) {
-        getContestThreadLocalOptional().ifPresent(traceMethodContext -> traceMethodContext.setStartMessageId(startId));
-    }
-
     public static String getMessageStart() {
         return getContestThreadLocalOptional().map(TraceMethodContext::getStartMessageId).orElse("");
     }

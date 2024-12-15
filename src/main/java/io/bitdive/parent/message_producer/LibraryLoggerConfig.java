@@ -30,7 +30,7 @@ public class LibraryLoggerConfig {
                                 "toSend" + File.separator +
                                 "data-%d{yyyy-MM-dd-HH-mm-ss}_" + YamlParserConfig.getProfilingConfig().getApplication().getServiceName() + ".data.gz");
 
-        // Добавляем PatternLayout к аппендеру
+
         LayoutComponentBuilder layoutBuilder = builder.newLayout("PatternLayout")
                 .addAttribute("pattern", "%m --- %n");
         rollingFileAppender.add(layoutBuilder);
@@ -54,7 +54,7 @@ public class LibraryLoggerConfig {
                 .addAttribute("proxyHost", Optional.ofNullable(YamlParserConfig.getProfilingConfig().getMonitoring().getSendFiles().getServerConsumer())
                         .map(ProfilingConfig.MonitoringConfig.MonitoringSendFilesConfig.ServerConsumerConfig::getProxy)
                         .map(ProfilingConfig.MonitoringConfig.MonitoringSendFilesConfig.ServerConsumerConfig.ProxyConfig::getHost)
-                        .orElse(""))
+                        .orElse(null))
                 .addAttribute("proxyPort", Optional.ofNullable(YamlParserConfig.getProfilingConfig().getMonitoring().getSendFiles().getServerConsumer())
                         .map(ProfilingConfig.MonitoringConfig.MonitoringSendFilesConfig.ServerConsumerConfig::getProxy)
                         .map(ProfilingConfig.MonitoringConfig.MonitoringSendFilesConfig.ServerConsumerConfig.ProxyConfig::getPort)

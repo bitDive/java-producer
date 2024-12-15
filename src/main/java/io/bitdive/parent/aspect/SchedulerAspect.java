@@ -11,13 +11,11 @@ import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.reflect.MethodSignature;
 import org.springframework.stereotype.Component;
 
-import java.time.LocalDateTime;
-import java.util.Optional;
+import java.time.OffsetDateTime;
 
 import static io.bitdive.parent.message_producer.MessageService.sendMessageEnd;
 import static io.bitdive.parent.message_producer.MessageService.sendMessageStart;
-import static io.bitdive.parent.trasirovka.agent.utils.DataUtils.methodReturnConvert;
-import static io.bitdive.parent.trasirovka.agent.utils.DataUtils.paramConvert;
+import static io.bitdive.parent.trasirovka.agent.utils.DataUtils.*;
 
 @Component
 @Aspect
@@ -39,7 +37,7 @@ public class SchedulerAspect {
                     methodSig.getName(),
                     ContextManager.getTraceId(),
                     ContextManager.getSpanId(),
-                    LocalDateTime.now(),
+                    OffsetDateTime.now(),
                     ContextManager.getParentIdMessageIdQueue(),
                     true,
                     ReflectionUtils.objectToString(paramConvert(joinPoint.getArgs())),
@@ -57,10 +55,11 @@ public class SchedulerAspect {
 
             sendMessageEnd(
                     UUIDMessage,
-                    LocalDateTime.now(),
-                    Optional.ofNullable(thrown).map(Throwable::getMessage).orElse(""),
+                    OffsetDateTime.now(),
+                    getaNullThrowable(thrown),
                     ReflectionUtils.objectToString(methodReturnConvert(retVal)),
-                    ContextManager.getTraceId()
+                    ContextManager.getTraceId(),
+                    ContextManager.getSpanId()
             );
 
             ContextManager.removeLastQueue();

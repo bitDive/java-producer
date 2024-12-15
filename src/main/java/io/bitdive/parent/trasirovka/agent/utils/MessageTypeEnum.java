@@ -1,5 +1,5 @@
 package io.bitdive.parent.trasirovka.agent.utils;
 
 public enum MessageTypeEnum {
-    STAR, END, SQL, WEB_RESPONSE
+    STAR, END, SQL_START, SQL_END, WEB_RESPONSE, WEB_REQUEST
 }

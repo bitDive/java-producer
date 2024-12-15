@@ -1,18 +1,21 @@
 package io.bitdive.parent.message_producer;
 
+import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import io.bitdive.parent.trasirovka.agent.utils.MessageTypeEnum;
 import org.apache.logging.log4j.Logger;
 
 import java.nio.charset.StandardCharsets;
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
+import java.util.Optional;
+import java.util.stream.Collectors;
 
 public class MessageService {
     private static final Logger logger = LibraryLoggerConfig.getLogger(MessageService.class);
 
     private static final String SPLITTER = "~-~";
-    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ISO_LOCAL_DATE_TIME;
 
 
     private static void sendMessage(String message) {
@@ -25,30 +28,19 @@ public class MessageService {
     }
 
     private static String buildMessage(String... parts) {
-        return String.join(SPLITTER, parts);
+        return Arrays.stream(parts)
+                .map(s -> {
+                    if (s == null)
+                        return "";
+                    else
+                        return s.equals("null") ? "" : s;
+                })
+                .collect(Collectors.joining(SPLITTER));
     }
 
-
-    /**
-     * Отправляет сообщение типа STAR.
-     *
-     * @param moduleName    Имя модуля.
-     * @param serviceName   Имя сервиса.
-     * @param messageId     Идентификатор сообщения.
-     * @param className     Имя класса.
-     * @param methodName    Имя метода.
-     * @param traceId       Trace ID.
-     * @param spanId        Span ID.
-     * @param dateStart     Дата и время начала.
-     * @param parentMessage Родительское сообщение.
-     * @param inPointFlag   Флаг точки входа.
-     * @param args          Аргументы метода.
-     * @param operationType Тип операции.
-     * @param urlRequest    URL запроса.
-     */
     public static void sendMessageStart(String moduleName, String serviceName, String messageId,
                                         String className, String methodName, String traceId, String spanId,
-                                        LocalDateTime dateStart, String parentMessage, boolean inPointFlag,
+                                        OffsetDateTime dateStart, String parentMessage, boolean inPointFlag,
                                         String args, String operationType, String urlRequest) {
         sendMessage(buildMessage(
                 MessageTypeEnum.STAR.name(),
@@ -59,62 +51,79 @@ public class MessageService {
                 methodName,
                 traceId,
                 spanId,
-                dateStart.format(DATE_FORMATTER),
+                dateStart.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
                 parentMessage,
                 Boolean.toString(inPointFlag),
                 args,
                 operationType,
-                urlRequest != null ? urlRequest : ""
+                urlRequest != null ? urlRequest : "",
+                YamlParserConfig.getLibraryVersion()
         ));
     }
 
-    /**
-     * Отправляет сообщение типа END.
-     *
-     * @param messageId        Идентификатор сообщения.
-     * @param dateEnd          Дата и время окончания.
-     * @param errorCallMessage Сообщение об ошибке вызова.
-     * @param methodReturn     Возвращаемое значение метода.
-     * @param traceId          Trace ID.
-     */
-    public static void sendMessageEnd(String messageId, LocalDateTime dateEnd,
-                                      String errorCallMessage, String methodReturn, String traceId) {
+    public static void sendMessageEnd(String messageId, OffsetDateTime dateEnd,
+                                      String errorCallMessage, String methodReturn, String traceId, String spanId) {
         sendMessage(buildMessage(
                 MessageTypeEnum.END.name(),
                 messageId,
-                dateEnd.format(DATE_FORMATTER),
+                dateEnd.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
                 errorCallMessage,
                 methodReturn,
-                traceId
+                traceId,
+                spanId
         ));
     }
 
-    /**
-     * Отправляет сообщение типа SQL.
-     *
-     * @param messageId Идентификатор сообщения.
-     * @param traceId   Trace ID.
-     * @param spanId    Span ID.
-     * @param sql       SQL запрос.
-     */
-    public static void sendMessageSQL(String messageId, String traceId, String spanId, String sql) {
+    public static void sendMessageRequestUrl(String messageId, String traceId, String spanId,
+                                             OffsetDateTime dateStart, OffsetDateTime dateEnd,
+                                             String URI, String method, String headers, String body,
+                                             String statusCode, String responseHeaders, String responseBody,
+                                             String errorCall, String parentMessageId
+    ) {
         sendMessage(buildMessage(
-                MessageTypeEnum.SQL.name(),
+                MessageTypeEnum.WEB_REQUEST.name(),
                 messageId,
                 traceId,
                 spanId,
-                sql
+                dateStart.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                dateEnd.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                URI,
+                method,
+                headers,
+                body,
+                statusCode,
+                responseHeaders,
+                responseBody,
+                errorCall,
+                parentMessageId,
+                YamlParserConfig.getLibraryVersion()
         ));
     }
 
-    /**
-     * Отправляет сообщение типа WEB_RESPONSE.
-     *
-     * @param messageId    Идентификатор сообщения.
-     * @param traceId      Trace ID.
-     * @param spanId       Span ID.
-     * @param codeResponse Код ответа.
-     */
+    public static void sendMessageSQLStart(String messageId, String traceId, String spanId, String sql, OffsetDateTime dateStart, String parentMessageId) {
+        sendMessage(buildMessage(
+                MessageTypeEnum.SQL_START.name(),
+                messageId,
+                traceId,
+                spanId,
+                sql,
+                dateStart.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                parentMessageId,
+                YamlParserConfig.getLibraryVersion()
+        ));
+    }
+
+    public static void sendMessageSQLEnd(String messageId, String traceId, String spanId, OffsetDateTime dateEnd, String error) {
+        sendMessage(buildMessage(
+                MessageTypeEnum.SQL_END.name(),
+                messageId,
+                traceId,
+                spanId,
+                dateEnd.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                Optional.ofNullable(error).orElse("")
+        ));
+    }
+
     public static void sendMessageWebResponse(String messageId, String traceId, String spanId, Integer codeResponse) {
         String codeResponseStr = codeResponse != null ? codeResponse.toString() : "";
         sendMessage(buildMessage(
@@ -122,7 +131,8 @@ public class MessageService {
                 messageId,
                 traceId,
                 spanId,
-                codeResponseStr
+                codeResponseStr,
+                YamlParserConfig.getLibraryVersion()
         ));
     }
 

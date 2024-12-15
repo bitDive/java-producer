@@ -45,11 +45,25 @@ public class ProfilingConfig {
             private ServerConsumerConfig serverConsumer;
             private Long schedulerTimer;
 
+
             @Getter
             @Setter
             public static class ServerConsumerConfig {
                 private String url;
                 private ProxyConfig proxy;
+                private VaultConfig vault;
+
+                public boolean isSSLSend() {
+                    return url.toLowerCase().contains("https");
+                }
+
+                @Getter
+                @Setter
+                public static class VaultConfig {
+                    private String url;
+                    private String login;
+                    private String password;
+                }
 
                 @Getter
                 @Setter

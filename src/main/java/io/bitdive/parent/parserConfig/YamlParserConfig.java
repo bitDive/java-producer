@@ -1,6 +1,7 @@
 package io.bitdive.parent.parserConfig;
 
 import lombok.Getter;
+import lombok.Setter;
 import org.yaml.snakeyaml.Yaml;
 
 import java.io.InputStream;
@@ -8,6 +9,10 @@ import java.util.Arrays;
 import java.util.stream.Stream;
 
 public class YamlParserConfig {
+
+    @Setter
+    @Getter
+    private static String libraryVersion = "";
 
     @Getter
     private static ProfilingConfig profilingConfig;
@@ -18,7 +23,7 @@ public class YamlParserConfig {
         ProfilingConfig defaultConfig;
         try (InputStream defaultConfigStream = YamlParserConfig.class.getClassLoader().getResourceAsStream("config-profiling-default.yml")) {
             if (defaultConfigStream == null) {
-                throw new IllegalArgumentException("Файл defaults.yml не найден");
+                throw new IllegalArgumentException("File defaults.yml not find");
             }
             defaultConfig = yaml.loadAs(defaultConfigStream, ProfilingConfig.class);
         } catch (Exception e) {
@@ -107,6 +112,19 @@ public class YamlParserConfig {
                 if (overrideConfig.getMonitoring().getSendFiles().getServerConsumer() != null) {
                     if (overrideConfig.getMonitoring().getSendFiles().getServerConsumer().getUrl() != null) {
                         baseConfig.getMonitoring().getSendFiles().getServerConsumer().setUrl(overrideConfig.getMonitoring().getSendFiles().getServerConsumer().getUrl());
+                    }
+
+                    if (overrideConfig.getMonitoring().getSendFiles().getServerConsumer().getVault() != null &&
+                            overrideConfig.getMonitoring().getSendFiles().getServerConsumer().getVault().getUrl() != null &&
+                            overrideConfig.getMonitoring().getSendFiles().getServerConsumer().getVault().getLogin() != null &&
+                            overrideConfig.getMonitoring().getSendFiles().getServerConsumer().getVault().getPassword() != null
+
+                    ) {
+                        baseConfig.getMonitoring().getSendFiles().getServerConsumer().setVault(new ProfilingConfig.MonitoringConfig.MonitoringSendFilesConfig.ServerConsumerConfig.VaultConfig());
+                        baseConfig.getMonitoring().getSendFiles().getServerConsumer().getVault().setUrl(overrideConfig.getMonitoring().getSendFiles().getServerConsumer().getVault().getUrl());
+                        baseConfig.getMonitoring().getSendFiles().getServerConsumer().getVault().setLogin(overrideConfig.getMonitoring().getSendFiles().getServerConsumer().getVault().getLogin());
+                        baseConfig.getMonitoring().getSendFiles().getServerConsumer().getVault().setPassword(overrideConfig.getMonitoring().getSendFiles().getServerConsumer().getVault().getPassword());
+
                     }
 
                     if (overrideConfig.getMonitoring().getSendFiles().getServerConsumer().getProxy() != null &&

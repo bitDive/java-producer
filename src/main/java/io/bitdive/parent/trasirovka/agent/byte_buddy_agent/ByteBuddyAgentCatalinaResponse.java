@@ -7,6 +7,9 @@ import net.bytebuddy.asm.Advice;
 import net.bytebuddy.matcher.ElementMatchers;
 
 import java.lang.reflect.Method;
+import java.util.Arrays;
+import java.util.Optional;
+import java.util.stream.Collectors;
 
 import static io.bitdive.parent.message_producer.MessageService.sendMessageWebResponse;
 
@@ -27,7 +30,10 @@ public class ByteBuddyAgentCatalinaResponse {
         public static void onEnter(@Advice.This Object responseObj) {
 
             try {
+                if (Optional.of(ContextManager.getUrlStart()).orElse("").toLowerCase().contains("/actuator/")) return;
+
                 Class<?> requestClass = responseObj.getClass();
+
                 Method getResponseMethod = requestClass.getMethod("getResponse");
                 Object responseInternal = getResponseMethod.invoke(responseObj);
 
