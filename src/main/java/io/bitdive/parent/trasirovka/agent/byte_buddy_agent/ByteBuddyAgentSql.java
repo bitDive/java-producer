@@ -13,7 +13,8 @@ import java.sql.PreparedStatement;
 import java.sql.Statement;
 import java.time.OffsetDateTime;
 
-import static io.bitdive.parent.message_producer.MessageService.*;
+import static io.bitdive.parent.message_producer.MessageService.sendMessageSQLEnd;
+import static io.bitdive.parent.message_producer.MessageService.sendMessageSQLStart;
 import static io.bitdive.parent.trasirovka.agent.utils.DataUtils.getaNullThrowable;
 
 public class ByteBuddyAgentSql {
@@ -37,7 +38,6 @@ public class ByteBuddyAgentSql {
                 .installOnByteBuddyAgent();
     }
 
-
     public static class SqlAdvice {
 
         @Advice.OnMethodEnter
@@ -46,12 +46,13 @@ public class ByteBuddyAgentSql {
             MethodContext context = new MethodContext();
 
             String sqlFromStatement = SQLUtils.getSQLFromStatement(stmt);
+            String connectionUrl = SQLUtils.getConnectionUrlFromStatement(stmt);
+
             context.flagNoMonitoring = sqlFromStatement == null || sqlFromStatement.isEmpty();
 
             context.traceId = ContextManager.getTraceId();
             context.spanId = ContextManager.getSpanId();
             context.UUIDMessage = UuidCreator.getTimeBased().toString();
-
 
             try {
                 if (!context.flagNoMonitoring && !ContextManager.isMessageIdQueueEmpty()) {
@@ -60,6 +61,7 @@ public class ByteBuddyAgentSql {
                             context.traceId,
                             context.spanId,
                             sqlFromStatement,
+                            connectionUrl,
                             OffsetDateTime.now(),
                             ContextManager.getMessageIdQueueNew()
                     );
@@ -72,7 +74,6 @@ public class ByteBuddyAgentSql {
 
             return context;
         }
-
 
         @Advice.OnMethodExit(onThrowable = Throwable.class)
         public static void onExit(@Advice.Enter MethodContext context,

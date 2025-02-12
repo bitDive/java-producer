@@ -1,5 +1,6 @@
 package io.bitdive.parent.parserConfig;
 
+import com.github.f4b6a3.uuid.UuidCreator;
 import lombok.Getter;
 import lombok.Setter;
 import org.yaml.snakeyaml.Yaml;
@@ -13,6 +14,13 @@ public class YamlParserConfig {
     @Setter
     @Getter
     private static String libraryVersion = "";
+
+    @Getter
+    @Setter
+    private static boolean isWork = true;
+
+    @Getter
+    private static final String UUIDService = UuidCreator.getTimeBased().toString();
 
     @Getter
     private static ProfilingConfig profilingConfig;
@@ -60,6 +68,11 @@ public class YamlParserConfig {
 
 
         if (overrideConfig.getMonitoring() != null) {
+
+            if ((overrideConfig.getMonitoring().getNotWorkWithSpringProfiles() != null) && (overrideConfig.getMonitoring().getNotWorkWithSpringProfiles().length > 0)) {
+                baseConfig.getMonitoring().setNotWorkWithSpringProfiles(overrideConfig.getMonitoring().getNotWorkWithSpringProfiles());
+            }
+
             if (overrideConfig.getMonitoring().getLogLevel() != null) {
                 baseConfig.getMonitoring().setLogLevel(overrideConfig.getMonitoring().getLogLevel());
             }

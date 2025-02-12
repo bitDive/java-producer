@@ -22,6 +22,7 @@ public class ProfilingConfig {
         private MonitoringSendFilesConfig sendFiles;
         private MonitoringDataFile dataFile;
         private Serialization serialization;
+        private String[] notWorkWithSpringProfiles;
 
         @Getter
         @Setter

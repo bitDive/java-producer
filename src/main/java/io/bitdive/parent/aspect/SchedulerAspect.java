@@ -22,6 +22,9 @@ import static io.bitdive.parent.trasirovka.agent.utils.DataUtils.*;
 public class SchedulerAspect {
     @Around("@annotation(org.springframework.scheduling.annotation.Scheduled)")
     public Object aroundFeignClientMethods(ProceedingJoinPoint joinPoint) throws Throwable {
+        ContextManager.createNewRequest();
+        //if (!ContextManager.isMessageIdQueueEmpty()) return joinPoint.proceed();
+
         String UUIDMessage = UuidCreator.getTimeBased().toString();
         Object retVal = null;
         Throwable thrown = null;

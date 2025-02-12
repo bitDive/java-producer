@@ -57,7 +57,8 @@ public class MessageService {
                 args,
                 operationType,
                 urlRequest != null ? urlRequest : "",
-                YamlParserConfig.getLibraryVersion()
+                YamlParserConfig.getLibraryVersion(),
+                YamlParserConfig.getUUIDService()
         ));
     }
 
@@ -100,13 +101,16 @@ public class MessageService {
         ));
     }
 
-    public static void sendMessageSQLStart(String messageId, String traceId, String spanId, String sql, OffsetDateTime dateStart, String parentMessageId) {
+    public static void sendMessageSQLStart(String messageId, String traceId, String spanId,
+                                           String sql, String connectionUrl,
+                                           OffsetDateTime dateStart, String parentMessageId) {
         sendMessage(buildMessage(
                 MessageTypeEnum.SQL_START.name(),
                 messageId,
                 traceId,
                 spanId,
                 sql,
+                connectionUrl,
                 dateStart.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
                 parentMessageId,
                 YamlParserConfig.getLibraryVersion()

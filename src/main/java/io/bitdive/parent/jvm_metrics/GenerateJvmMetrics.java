@@ -3,6 +3,14 @@ package io.bitdive.parent.jvm_metrics;
 import io.bitdive.parent.parserConfig.ProfilingConfig;
 import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.binder.jvm.JvmGcMetrics;
+import io.micrometer.core.instrument.binder.jvm.JvmMemoryMetrics;
+import io.micrometer.core.instrument.binder.jvm.JvmThreadMetrics;
+import io.micrometer.core.instrument.binder.system.FileDescriptorMetrics;
+import io.micrometer.core.instrument.binder.system.ProcessorMetrics;
+import io.micrometer.core.instrument.binder.system.UptimeMetrics;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 import java.io.File;
 import java.io.IOException;
@@ -11,7 +19,6 @@ import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.time.LocalDateTime;
-import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
@@ -28,6 +35,8 @@ public class GenerateJvmMetrics {
     private static Path logDirectoryPath;
     private static DateTimeFormatter formatter;
     private static Proxy proxy;
+
+    private static MeterRegistry meterRegistry;
 
 
     public static void init() {
@@ -70,10 +79,22 @@ public class GenerateJvmMetrics {
 
 
     private static void startLogging() {
-        Runnable logTask = GenerateJvmMetrics::collectMetrics;
-        scheduler.scheduleAtFixedRate(logTask, 0, 20, TimeUnit.SECONDS);
-        if (LoggerStatusContent.isErrorsOrDebug())
-            System.out.println("Start logging metrics every minute to a directory: " + logDirectoryPath.toAbsolutePath());
+        try {
+            meterRegistry = new SimpleMeterRegistry();
+            new JvmMemoryMetrics().bindTo(meterRegistry);
+            new JvmGcMetrics().bindTo(meterRegistry);
+            new JvmThreadMetrics().bindTo(meterRegistry);
+            new ProcessorMetrics().bindTo(meterRegistry);
+            new UptimeMetrics().bindTo(meterRegistry);
+            new FileDescriptorMetrics().bindTo(meterRegistry);
+            meterRegistry.counter("bitDive.metrics").increment(5);
+
+            Runnable logTask = GenerateJvmMetrics::collectMetrics;
+            scheduler.scheduleAtFixedRate(logTask, 0, 30, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            if (LoggerStatusContent.isErrorsOrDebug())
+                System.out.println("Start logging metrics every minute to a directory: " + logDirectoryPath.toAbsolutePath());
+        }
     }
 
 
@@ -95,28 +116,7 @@ public class GenerateJvmMetrics {
 
     private static void collectMetrics() {
         try {
-            JvmMetricsResponse response = new JvmMetricsResponse();
-            response.setHeapMemoryUsed(JvmMetricsService.getUsedHeapMemory());
-            response.setNonHeapMemoryUsed(JvmMetricsService.getNonHeapMemoryUsed());
-            response.setThreadCount(JvmMetricsService.getThreadCount());
-            response.setDaemonThreadCount(JvmMetricsService.getDaemonThreadCount());
-            response.setTotalMemory(JvmMetricsService.getTotalMemory());
-            response.setFreeMemory(JvmMetricsService.getFreeMemory());
-            response.setMaxMemory(JvmMetricsService.getMaxMemory());
-            response.setAvailableProcessors(JvmMetricsService.getAvailableProcessors());
-            response.setSystemCpuLoadPercentage(JvmMetricsService.getSystemCpuLoad());
-            response.setProcessCpuLoadPercentage(JvmMetricsService.getProcessCpuLoad());
-
-            response.setTotalSwapSpace(JvmMetricsService.getTotalSwapSpace());
-            response.setFreeSwapSpace(JvmMetricsService.getFreeSwapSpace());
-
-            response.setDiskMetrics(JvmMetricsService.getDiskMetrics());
-
-            response.setModuleName(YamlParserConfig.getProfilingConfig().getApplication().getModuleName());
-            response.setServiceName(YamlParserConfig.getProfilingConfig().getApplication().getServiceName());
-            response.setCreatedMetric(OffsetDateTime.now());
-
-            writeMetricsToFile(response);
+            writeMetricsToFile(new MetricsService(meterRegistry));
         } catch (Exception e) {
             if (LoggerStatusContent.isErrorsOrDebug())
                 System.err.println("Failed to write metrics to file: " + e.getMessage());
@@ -124,15 +124,13 @@ public class GenerateJvmMetrics {
         }
     }
 
-    private static void writeMetricsToFile(JvmMetricsResponse response) {
+    private static void writeMetricsToFile(MetricsService metricsService) {
         try {
             String timestamp = LocalDateTime.now().format(formatter);
             String fileName = String.format("jvm_metrics_%s.BitDiveData", timestamp);
             Path filePath = logDirectoryPath.resolve(fileName);
 
-            Files.write(filePath, response.toString().getBytes(), StandardOpenOption.CREATE_NEW);
-            if (LoggerStatusContent.isDebug())
-                System.out.println("Metrics write in file: " + filePath.toAbsolutePath());
+            Files.write(filePath, metricsService.sendMetrics().getBytes(), StandardOpenOption.CREATE_NEW);
             scanAndSendFiles();
         } catch (IOException e) {
             if (LoggerStatusContent.isErrorsOrDebug())

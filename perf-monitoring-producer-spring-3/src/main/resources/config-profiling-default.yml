@@ -9,6 +9,7 @@ monitoring:
   monitoringReturnMethod: false
   monitoringStaticMethod: false
   monitoringOnlySpringComponent: true
+  notWorkWithSpringProfiles: [ ]
   dataFile:
     path: monitoringData
     timerConvertForSend: 10

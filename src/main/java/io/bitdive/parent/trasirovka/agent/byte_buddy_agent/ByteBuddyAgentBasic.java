@@ -18,7 +18,6 @@ import net.bytebuddy.matcher.ElementMatcher;
 import net.bytebuddy.matcher.ElementMatchers;
 
 import java.lang.reflect.Method;
-import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.concurrent.CompletableFuture;
 
@@ -85,6 +84,7 @@ public class ByteBuddyAgentBasic {
                                         .and(ElementMatchers.not(ElementMatchers.isAbstract()))
                                         .and(ElementMatchers.not(ElementMatchers.isAnnotatedWith(ElementMatchers.nameEndsWith("Bean"))))
                                         .and(ElementMatchers.not(ElementMatchers.isAnnotatedWith(ElementMatchers.nameEndsWith("ExceptionHandler"))))
+                                        .and(ElementMatchers.not(ElementMatchers.isAnnotatedWith(ElementMatchers.named("org.springframework.scheduling.annotation.Scheduled"))))
                                         .and(ElementMatchers.not(ElementMatchers.nameMatches(".*\\$.*")))
                                         .and(ElementMatchers.not(ElementMatchers.isSynthetic()))
                                         .and(ElementMatchers.not(ElementMatchers.isDeclaredBy(Object.class)))

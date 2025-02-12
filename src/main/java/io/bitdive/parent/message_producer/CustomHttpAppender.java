@@ -93,14 +93,14 @@ public class CustomHttpAppender extends AbstractAppender {
     }
 
     private boolean isGzipValid(Path file) {
-        try (GZIPInputStream gis = new GZIPInputStream(Files.newInputStream(file.toFile().toPath()))) {
-            byte[] buffer = new byte[1024];
+        try (GZIPInputStream gis = new GZIPInputStream(Files.newInputStream(file))) {
+            byte[] buffer = new byte[8192];
             while (gis.read(buffer) != -1) {
             }
             return true;
         } catch (IOException e) {
             if (LoggerStatusContent.isDebug()) {
-                System.out.println("Integrity check failed for file " + file.toString() + ": " + e.getMessage());
+                System.out.println("Integrity check failed for file " + file + ": " + e.getMessage());
             }
             return false;
         }

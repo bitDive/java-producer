@@ -7,7 +7,7 @@
 
     <groupId>io.bitdive</groupId>
     <artifactId>bitdive-producer-spring-2</artifactId>
-    <version>0.0.14</version>
+    <version>1.0.0</version>
     <name>producer-for-spring-2</name>
     <parent>
         <groupId>org.springframework.boot</groupId>
@@ -42,11 +42,6 @@
     </developers>
 
     <dependencies>
-
-        <dependency>
-            <groupId>com.google.code.gson</groupId>
-            <artifactId>gson</artifactId>
-        </dependency>
 
         <dependency>
             <groupId>org.apache.logging.log4j</groupId>
@@ -96,7 +91,7 @@
         <dependency>
             <groupId>io.bitdive</groupId>
             <artifactId>java-producer-parent</artifactId>
-            <version>0.0.14</version>
+            <version>1.0.0</version>
         </dependency>
 
 

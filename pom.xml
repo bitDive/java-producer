@@ -6,7 +6,7 @@
 
     <groupId>io.bitdive</groupId>
     <artifactId>java-producer-parent</artifactId>
-    <version>0.0.14</version>
+    <version>1.0.0</version>
     <name>parent-producer</name>
 
     <properties>
@@ -40,6 +40,11 @@
     </developers>
 
     <dependencies>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-core</artifactId>
+            <version>1.14.3</version>
+        </dependency>
 
         <dependency>
             <groupId>com.github.oshi</groupId>
@@ -75,16 +80,11 @@
             <scope>compile</scope>
         </dependency>
         <dependency>
-            <groupId>com.alibaba</groupId>
-            <artifactId>fastjson</artifactId>
-            <version>2.0.53</version>
-        </dependency>
-        <dependency>
             <groupId>com.google.code.gson</groupId>
             <artifactId>gson</artifactId>
-            <version>2.11.0</version>
-            <scope>compile</scope>
+            <version>2.12.1</version>
         </dependency>
+
 
         <dependency>
             <groupId>com.github.f4b6a3</groupId>

@@ -13,7 +13,12 @@ public class ContextRunnableCustom implements Runnable {
 
     @Override
     public void run() {
-        ContextManager.setContextThread(context);
-        originalRunnable.run();
+        TraceMethodContext oldContext = ContextManager.getContext();
+        try {
+            ContextManager.setContextThread(context);
+            originalRunnable.run();
+        } finally {
+            ContextManager.setContextThread(oldContext);
+        }
     }
 }
