@@ -74,6 +74,12 @@ public class JsonSerializer {
 
         Class<?> clazz = value.getClass();
 
+        // Add special handling for enums
+        if (value instanceof Enum<?>) {
+            serializeString(((Enum<?>) value).name(), sb);
+            return;
+        }
+
         if (visited.contains(value)) {
             sb.append("\"[CIRCULAR_REFERENCE]\"");
             return;
@@ -294,32 +300,41 @@ public class JsonSerializer {
             return;
         }
 
-        Field[] fields = FIELDS_CACHE.computeIfAbsent(clazz, JsonSerializer::getDeclaredFields);
+        try {
+            Field[] fields = FIELDS_CACHE.computeIfAbsent(clazz, JsonSerializer::getDeclaredFields);
 
-        sb.append('{');
-        boolean first = true;
-        visited.add(obj);
+            sb.append('{');
+            boolean first = true;
+            visited.add(obj);
 
-        for (Field field : fields) {
-            try {
-                Field actualField = getField(obj.getClass(), field.getName());
-                if (actualField == null) continue;
+            for (Field field : fields) {
+                try {
+                    Field actualField = getField(obj.getClass(), field.getName());
+                    if (actualField == null) continue;
 
-                Object value = field.get(obj);
-                if (!first) {
-                    sb.append(',');
+                    Object value = field.get(obj);
+                    if (!first) {
+                        sb.append(',');
+                    }
+                    serializeString(field.getName(), sb);
+                    sb.append(':');
+                    serializeValue(value, sb, visited, depth + 1);
+                    first = false;
+                } catch (IllegalAccessException e) {
+                    // Skip inaccessible fields
                 }
-                serializeString(field.getName(), sb);
-                sb.append(':');
-                serializeValue(value, sb, visited, depth + 1);
-                first = false;
-            } catch (IllegalAccessException e) {
-                // Skip inaccessible fields
+            }
+
+            visited.remove(obj);
+            sb.append('}');
+        } catch (Exception e) {
+            // If we can't access fields, fallback to toString()
+            try {
+                serializeString(obj.toString(), sb);
+            } catch (Exception ex) {
+                sb.append("\"[Object cannot be serialized]\"");
             }
         }
-
-        visited.remove(obj);
-        sb.append('}');
     }
 
     private static boolean isSensitiveField(String fieldName) {
@@ -328,24 +343,18 @@ public class JsonSerializer {
     }
 
     private static Field[] getDeclaredFields(Class<?> clazz) {
-        Field[] fields = new Field[0];
+        List<Field> fieldList = new ArrayList<>();
         Class<?> currentClass = clazz;
 
         // Get fields from the entire class hierarchy
         while (currentClass != null && currentClass != Object.class) {
-            Field[] currentFields = currentClass.getDeclaredFields();
-            Field[] newFields = new Field[fields.length + currentFields.length];
-            System.arraycopy(fields, 0, newFields, 0, fields.length);
-            System.arraycopy(currentFields, 0, newFields, fields.length, currentFields.length);
-            fields = newFields;
+            for (Field field : currentClass.getDeclaredFields()) {
+                field.setAccessible(true);
+                fieldList.add(field);
+            }
             currentClass = currentClass.getSuperclass();
         }
 
-        // Make all fields accessible
-        for (Field field : fields) {
-            field.setAccessible(true);
-        }
-
-        return fields;
+        return fieldList.toArray(new Field[0]);
     }
 } 
