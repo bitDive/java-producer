@@ -6,7 +6,7 @@
 
     <groupId>io.bitdive</groupId>
     <artifactId>java-producer-parent</artifactId>
-    <version>1.0.1</version>
+    <version>1.0.2</version>
     <name>parent-producer</name>
 
     <properties>
@@ -40,7 +40,8 @@
     </developers>
 
     <dependencies>
-        <dependency>
+
+    <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-core</artifactId>
             <version>1.14.3</version>

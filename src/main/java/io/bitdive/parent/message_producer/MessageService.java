@@ -41,7 +41,7 @@ public class MessageService {
     public static void sendMessageStart(String moduleName, String serviceName, String messageId,
                                         String className, String methodName, String traceId, String spanId,
                                         OffsetDateTime dateStart, String parentMessage, boolean inPointFlag,
-                                        String args, String operationType, String urlRequest) {
+                                        String args, String operationType, String urlRequest, String serviceCallId) {
         sendMessage(buildMessage(
                 MessageTypeEnum.STAR.name(),
                 moduleName,
@@ -58,7 +58,8 @@ public class MessageService {
                 operationType,
                 urlRequest != null ? urlRequest : "",
                 YamlParserConfig.getLibraryVersion(),
-                YamlParserConfig.getUUIDService()
+                YamlParserConfig.getUUIDService(),
+                serviceCallId
         ));
     }
 
@@ -79,7 +80,7 @@ public class MessageService {
                                              OffsetDateTime dateStart, OffsetDateTime dateEnd,
                                              String URI, String method, String headers, String body,
                                              String statusCode, String responseHeaders, String responseBody,
-                                             String errorCall, String parentMessageId
+                                             String errorCall, String parentMessageId, String serviceCallId
     ) {
         sendMessage(buildMessage(
                 MessageTypeEnum.WEB_REQUEST.name(),
@@ -97,7 +98,8 @@ public class MessageService {
                 responseBody,
                 errorCall,
                 parentMessageId,
-                YamlParserConfig.getLibraryVersion()
+                YamlParserConfig.getLibraryVersion(),
+                serviceCallId
         ));
     }
 

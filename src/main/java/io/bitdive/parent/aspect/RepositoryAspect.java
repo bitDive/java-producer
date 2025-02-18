@@ -42,7 +42,7 @@ public class RepositoryAspect {
                     ContextManager.getParentIdMessageIdQueue(),
                     false,
                     ReflectionUtils.objectToString(paramConvert(joinPoint.getArgs())),
-                    MethodTypeEnum.DB.toString(), ""
+                    MethodTypeEnum.DB.toString(), "", ""
             );
 
             ContextManager.setMethodCallContextQueue(UUIDMessage);

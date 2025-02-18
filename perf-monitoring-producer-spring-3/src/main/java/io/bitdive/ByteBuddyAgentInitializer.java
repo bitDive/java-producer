@@ -35,10 +35,10 @@ public class ByteBuddyAgentInitializer implements ApplicationContextInitializer<
         YamlParserConfig.loadConfig();
         YamlParserConfig.setLibraryVersion(LibraryVersionBitDive.version);
 
-        if (YamlParserConfig.getProfilingConfig().getMonitoring().getNotWorkWithSpringProfiles() != null &&
-                YamlParserConfig.getProfilingConfig().getMonitoring().getNotWorkWithSpringProfiles().length > 0) {
+        if (YamlParserConfig.getProfilingConfig().getNotWorkWithSpringProfiles() != null &&
+                !YamlParserConfig.getProfilingConfig().getNotWorkWithSpringProfiles().isEmpty()) {
             Set<String> activeProfileSet = Arrays.stream(activeProfiles).collect(Collectors.toSet());
-            Set<String> notWorkProfileSet = Arrays.stream(YamlParserConfig.getProfilingConfig().getMonitoring().getNotWorkWithSpringProfiles()).collect(Collectors.toSet());
+            Set<String> notWorkProfileSet = Arrays.stream(new String[]{YamlParserConfig.getProfilingConfig().getNotWorkWithSpringProfiles()}).collect(Collectors.toSet());
 
             activeProfileSet.retainAll(notWorkProfileSet);
             if (!activeProfileSet.isEmpty()) {
@@ -47,8 +47,9 @@ public class ByteBuddyAgentInitializer implements ApplicationContextInitializer<
                 return;
             }
 
-        }
 
+        }
+        YamlParserConfig.getProfilingConfig().detectActualConfig(activeProfiles);
         if (LoggerStatusContent.isDebug()) {
             System.out.println("ByteBuddyAgentInitializer initialize start version: " + YamlParserConfig.getLibraryVersion());
         }

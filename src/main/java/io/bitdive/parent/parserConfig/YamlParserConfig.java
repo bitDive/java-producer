@@ -3,6 +3,7 @@ package io.bitdive.parent.parserConfig;
 import com.github.f4b6a3.uuid.UuidCreator;
 import lombok.Getter;
 import lombok.Setter;
+import org.springframework.util.ObjectUtils;
 import org.yaml.snakeyaml.Yaml;
 
 import java.io.InputStream;
@@ -24,6 +25,7 @@ public class YamlParserConfig {
 
     @Getter
     private static ProfilingConfig profilingConfig;
+
 
     public static void loadConfig() {
         Yaml yaml = new Yaml();
@@ -65,109 +67,116 @@ public class YamlParserConfig {
                 baseConfig.getApplication().setPackedScanner(overrideConfig.getApplication().getPackedScanner());
             }
         }
+        if (!ObjectUtils.isEmpty(overrideConfig.getNotWorkWithSpringProfiles())) {
+            baseConfig.setNotWorkWithSpringProfiles(overrideConfig.getNotWorkWithSpringProfiles());
+        }
 
+        if (overrideConfig.getMonitoringConfigs() != null && !overrideConfig.getMonitoringConfigs().isEmpty()) {
+            for (ProfilingConfig.MonitoringConfig monitoringConfigOverride : overrideConfig.getMonitoringConfigs()) {
 
-        if (overrideConfig.getMonitoring() != null) {
+                ProfilingConfig.MonitoringConfig defaultVal = DefaultMonitoringValues.create();
 
-            if ((overrideConfig.getMonitoring().getNotWorkWithSpringProfiles() != null) && (overrideConfig.getMonitoring().getNotWorkWithSpringProfiles().length > 0)) {
-                baseConfig.getMonitoring().setNotWorkWithSpringProfiles(overrideConfig.getMonitoring().getNotWorkWithSpringProfiles());
-            }
-
-            if (overrideConfig.getMonitoring().getLogLevel() != null) {
-                baseConfig.getMonitoring().setLogLevel(overrideConfig.getMonitoring().getLogLevel());
-            }
-            if (overrideConfig.getMonitoring().getMonitoringArgumentMethod() != null) {
-                baseConfig.getMonitoring().setMonitoringArgumentMethod(overrideConfig.getMonitoring().getMonitoringArgumentMethod());
-            }
-            if (overrideConfig.getMonitoring().getMonitoringReturnMethod() != null) {
-                baseConfig.getMonitoring().setMonitoringReturnMethod(overrideConfig.getMonitoring().getMonitoringReturnMethod());
-            }
-            if (overrideConfig.getMonitoring().getMonitoringStaticMethod() != null) {
-                baseConfig.getMonitoring().setMonitoringStaticMethod(overrideConfig.getMonitoring().getMonitoringStaticMethod());
-            }
-            if (overrideConfig.getMonitoring().getMonitoringOnlySpringComponent() != null) {
-                baseConfig.getMonitoring().setMonitoringOnlySpringComponent(overrideConfig.getMonitoring().getMonitoringOnlySpringComponent());
-            }
-
-            if (overrideConfig.getMonitoring().getDataFile() != null) {
-                if (overrideConfig.getMonitoring().getDataFile().getPath() != null) {
-                    overrideConfig.getMonitoring().getDataFile().setPath(overrideConfig.getMonitoring().getDataFile().getPath());
-                }
-                if (overrideConfig.getMonitoring().getDataFile().getTimerConvertForSend() != null) {
-                    overrideConfig.getMonitoring().getDataFile().setTimerConvertForSend(overrideConfig.getMonitoring().getDataFile().getTimerConvertForSend());
-                }
-                if (overrideConfig.getMonitoring().getDataFile().getFileStorageTime() != null) {
-                    overrideConfig.getMonitoring().getDataFile().setFileStorageTime(overrideConfig.getMonitoring().getDataFile().getFileStorageTime());
-                }
-            }
-
-            if (overrideConfig.getMonitoring().getSerialization() != null) {
-                if (overrideConfig.getMonitoring().getSerialization().getExcludedPackages() != null) {
-                    overrideConfig.getMonitoring().getSerialization().setExcludedPackages(
-                            Stream.concat(Arrays.stream(overrideConfig.getMonitoring().getSerialization().getExcludedPackages()),
-                                            Arrays.stream(baseConfig.getMonitoring().getSerialization().getExcludedPackages())
-                                    )
-                                    .toArray(String[]::new)
-                    );
+                if (monitoringConfigOverride.getForSpringProfile() != null) {
+                    defaultVal.setForSpringProfile(monitoringConfigOverride.getForSpringProfile());
                 }
 
-                if (overrideConfig.getMonitoring().getSerialization().getMaxElementCollection() != null) {
-                    overrideConfig.getMonitoring().getSerialization().setMaxElementCollection(baseConfig.getMonitoring().getSerialization().getMaxElementCollection());
+                if (monitoringConfigOverride.getLogLevel() != null) {
+                    defaultVal.setLogLevel(monitoringConfigOverride.getLogLevel());
+                }
+                if (monitoringConfigOverride.getMonitoringArgumentMethod() != null) {
+                    defaultVal.setMonitoringArgumentMethod(monitoringConfigOverride.getMonitoringArgumentMethod());
+                }
+                if (monitoringConfigOverride.getMonitoringReturnMethod() != null) {
+                    defaultVal.setMonitoringReturnMethod(monitoringConfigOverride.getMonitoringReturnMethod());
+                }
+                if (monitoringConfigOverride.getMonitoringStaticMethod() != null) {
+                    defaultVal.setMonitoringStaticMethod(monitoringConfigOverride.getMonitoringStaticMethod());
+                }
+                if (monitoringConfigOverride.getMonitoringOnlySpringComponent() != null) {
+                    defaultVal.setMonitoringOnlySpringComponent(monitoringConfigOverride.getMonitoringOnlySpringComponent());
                 }
 
-            }
-
-            if (overrideConfig.getMonitoring().getSendFiles() != null) {
-                if (overrideConfig.getMonitoring().getSendFiles().getSchedulerTimer() != null) {
-                    baseConfig.getMonitoring().getSendFiles().setSchedulerTimer(overrideConfig.getMonitoring().getSendFiles().getSchedulerTimer());
+                if (monitoringConfigOverride.getDataFile() != null) {
+                    if (monitoringConfigOverride.getDataFile().getPath() != null) {
+                        defaultVal.getDataFile().setPath(monitoringConfigOverride.getDataFile().getPath());
+                    }
+                    if (monitoringConfigOverride.getDataFile().getTimerConvertForSend() != null) {
+                        defaultVal.getDataFile().setTimerConvertForSend(monitoringConfigOverride.getDataFile().getTimerConvertForSend());
+                    }
+                    if (monitoringConfigOverride.getDataFile().getFileStorageTime() != null) {
+                        defaultVal.getDataFile().setFileStorageTime(monitoringConfigOverride.getDataFile().getFileStorageTime());
+                    }
                 }
 
-                if (overrideConfig.getMonitoring().getSendFiles().getServerConsumer() != null) {
-                    if (overrideConfig.getMonitoring().getSendFiles().getServerConsumer().getUrl() != null) {
-                        baseConfig.getMonitoring().getSendFiles().getServerConsumer().setUrl(overrideConfig.getMonitoring().getSendFiles().getServerConsumer().getUrl());
+                if (monitoringConfigOverride.getSerialization() != null) {
+                    if (monitoringConfigOverride.getSerialization().getExcludedPackages() != null) {
+                        defaultVal.getSerialization().setExcludedPackages(
+                                Stream.concat(Arrays.stream(monitoringConfigOverride.getSerialization().getExcludedPackages()),
+                                                Arrays.stream(baseConfig.getMonitoring().getSerialization().getExcludedPackages())
+                                        )
+                                        .toArray(String[]::new)
+                        );
                     }
 
-                    if (overrideConfig.getMonitoring().getSendFiles().getServerConsumer().getVault() != null &&
-                            overrideConfig.getMonitoring().getSendFiles().getServerConsumer().getVault().getUrl() != null &&
-                            overrideConfig.getMonitoring().getSendFiles().getServerConsumer().getVault().getLogin() != null &&
-                            overrideConfig.getMonitoring().getSendFiles().getServerConsumer().getVault().getPassword() != null
-
-                    ) {
-                        baseConfig.getMonitoring().getSendFiles().getServerConsumer().setVault(new ProfilingConfig.MonitoringConfig.MonitoringSendFilesConfig.ServerConsumerConfig.VaultConfig());
-                        baseConfig.getMonitoring().getSendFiles().getServerConsumer().getVault().setUrl(overrideConfig.getMonitoring().getSendFiles().getServerConsumer().getVault().getUrl());
-                        baseConfig.getMonitoring().getSendFiles().getServerConsumer().getVault().setLogin(overrideConfig.getMonitoring().getSendFiles().getServerConsumer().getVault().getLogin());
-                        baseConfig.getMonitoring().getSendFiles().getServerConsumer().getVault().setPassword(overrideConfig.getMonitoring().getSendFiles().getServerConsumer().getVault().getPassword());
-
+                    if (monitoringConfigOverride.getSerialization().getMaxElementCollection() != null) {
+                        defaultVal.getSerialization().setMaxElementCollection(monitoringConfigOverride.getSerialization().getMaxElementCollection());
                     }
 
-                    if (overrideConfig.getMonitoring().getSendFiles().getServerConsumer().getProxy() != null &&
-                            overrideConfig.getMonitoring().getSendFiles().getServerConsumer().getProxy().getHost() != null &&
-                            overrideConfig.getMonitoring().getSendFiles().getServerConsumer().getProxy().getPort() != null
+                }
 
-                    ) {
+                if (monitoringConfigOverride.getSendFiles() != null) {
+                    if (monitoringConfigOverride.getSendFiles().getSchedulerTimer() != null) {
+                        defaultVal.getSendFiles().setSchedulerTimer(monitoringConfigOverride.getSendFiles().getSchedulerTimer());
+                    }
 
-                        baseConfig.getMonitoring().getSendFiles().getServerConsumer().getProxy().setHost(overrideConfig.getMonitoring().getSendFiles().getServerConsumer().getProxy().getHost());
-                        baseConfig.getMonitoring().getSendFiles().getServerConsumer().getProxy().setPort(overrideConfig.getMonitoring().getSendFiles().getServerConsumer().getProxy().getPort());
-
-                        if (overrideConfig.getMonitoring().getSendFiles().getServerConsumer().getProxy().getUsername() != null) {
-                            baseConfig.getMonitoring().getSendFiles().getServerConsumer().getProxy().setUsername(overrideConfig.getMonitoring().getSendFiles().getServerConsumer().getProxy().getUsername());
+                    if (monitoringConfigOverride.getSendFiles().getServerConsumer() != null) {
+                        if (monitoringConfigOverride.getSendFiles().getServerConsumer().getUrl() != null) {
+                            defaultVal.getSendFiles().getServerConsumer().setUrl(monitoringConfigOverride.getSendFiles().getServerConsumer().getUrl());
                         }
-                        if (overrideConfig.getMonitoring().getSendFiles().getServerConsumer().getProxy().getPassword() != null) {
-                            baseConfig.getMonitoring().getSendFiles().getServerConsumer().getProxy().setPassword(overrideConfig.getMonitoring().getSendFiles().getServerConsumer().getProxy().getPassword());
+
+                        if (monitoringConfigOverride.getSendFiles().getServerConsumer().getVault() != null &&
+                                monitoringConfigOverride.getSendFiles().getServerConsumer().getVault().getUrl() != null &&
+                                monitoringConfigOverride.getSendFiles().getServerConsumer().getVault().getLogin() != null &&
+                                monitoringConfigOverride.getSendFiles().getServerConsumer().getVault().getPassword() != null
+
+                        ) {
+                            defaultVal.getSendFiles().getServerConsumer().setVault(new ProfilingConfig.MonitoringConfig.MonitoringSendFilesConfig.ServerConsumerConfig.VaultConfig());
+                            defaultVal.getSendFiles().getServerConsumer().getVault().setUrl(monitoringConfigOverride.getSendFiles().getServerConsumer().getVault().getUrl());
+                            defaultVal.getSendFiles().getServerConsumer().getVault().setLogin(monitoringConfigOverride.getSendFiles().getServerConsumer().getVault().getLogin());
+                            defaultVal.getSendFiles().getServerConsumer().getVault().setPassword(monitoringConfigOverride.getSendFiles().getServerConsumer().getVault().getPassword());
+
+                        }
+
+                        if (monitoringConfigOverride.getSendFiles().getServerConsumer().getProxy() != null &&
+                                monitoringConfigOverride.getSendFiles().getServerConsumer().getProxy().getHost() != null &&
+                                monitoringConfigOverride.getSendFiles().getServerConsumer().getProxy().getPort() != null
+
+                        ) {
+
+                            defaultVal.getSendFiles().getServerConsumer().getProxy().setHost(monitoringConfigOverride.getSendFiles().getServerConsumer().getProxy().getHost());
+                            defaultVal.getSendFiles().getServerConsumer().getProxy().setPort(monitoringConfigOverride.getSendFiles().getServerConsumer().getProxy().getPort());
+
+                            if (monitoringConfigOverride.getSendFiles().getServerConsumer().getProxy().getUsername() != null) {
+                                defaultVal.getSendFiles().getServerConsumer().getProxy().setUsername(monitoringConfigOverride.getSendFiles().getServerConsumer().getProxy().getUsername());
+                            }
+                            if (monitoringConfigOverride.getSendFiles().getServerConsumer().getProxy().getPassword() != null) {
+                                defaultVal.getSendFiles().getServerConsumer().getProxy().setPassword(monitoringConfigOverride.getSendFiles().getServerConsumer().getProxy().getPassword());
+                            }
                         }
                     }
                 }
+
+                baseConfig.getMonitoringConfigs().add(defaultVal);
             }
         }
 
-        if (overrideConfig.getAuthorisation() != null) {
+       /* if (overrideConfig.getAuthorisation() != null) {
             if (overrideConfig.getAuthorisation().getToken() != null) {
                 baseConfig.getAuthorisation().setToken(overrideConfig.getAuthorisation().getToken());
             }
-        }
+        }*/
 
         return baseConfig;
     }
-
 
 }

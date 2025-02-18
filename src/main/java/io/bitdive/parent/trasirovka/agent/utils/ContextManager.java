@@ -13,6 +13,10 @@ public class ContextManager {
         contextThreadLocal.set(new TraceMethodContext());
     }
 
+    public static void setServiceCallId(String serviceCallId) {
+        getContestThreadLocalOptional().ifPresent(traceMethodContext -> traceMethodContext.setServiceCallId(serviceCallId));
+    }
+
     public static void setSpanID(String spanId) {
         getContestThreadLocalOptional().ifPresent(traceMethodContext -> traceMethodContext.setSpanId(spanId));
     }
@@ -26,6 +30,7 @@ public class ContextManager {
         traceMethodContext.setTraceId(value.getTraceId());
         traceMethodContext.setSpanId(value.getSpanId());
 
+        traceMethodContext.setServiceCallId(value.getServiceCallId());
         traceMethodContext.setParentIdForRest(value.getParentIdForRest());
 
         traceMethodContext.setUrlStart(value.getUrlStart());
@@ -59,6 +64,10 @@ public class ContextManager {
 
     public static String getSpanId() {
         return getContestThreadLocalOptional().map(TraceMethodContext::getSpanId).orElse(null);
+    }
+
+    public static String getServiceCallId() {
+        return getContestThreadLocalOptional().map(TraceMethodContext::getServiceCallId).orElse(null);
     }
 
     private static String getMessageIdQueue() {

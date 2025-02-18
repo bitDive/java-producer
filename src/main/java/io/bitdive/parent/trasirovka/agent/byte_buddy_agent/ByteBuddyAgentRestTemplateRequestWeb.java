@@ -6,10 +6,15 @@ import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import io.bitdive.parent.trasirovka.agent.utils.ReflectionUtils;
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.implementation.MethodDelegation;
-import net.bytebuddy.implementation.bind.annotation.*;
+import net.bytebuddy.implementation.bind.annotation.Origin;
+import net.bytebuddy.implementation.bind.annotation.RuntimeType;
+import net.bytebuddy.implementation.bind.annotation.SuperCall;
+import net.bytebuddy.implementation.bind.annotation.This;
 import net.bytebuddy.matcher.ElementMatchers;
 
-import java.io.*;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.charset.Charset;
@@ -57,6 +62,8 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
             String responseBody = null;
             Charset charset = null;
 
+            String serviceCallId = UuidCreator.getTimeBased().toString();
+
             OffsetDateTime dateStart = OffsetDateTime.now();
             OffsetDateTime dateEnd = null;
 
@@ -91,6 +98,7 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
                     Method addHeaderMethod = headers.getClass().getMethod("add", String.class, String.class);
                     addHeaderMethod.invoke(headers, "x-BitDiv-custom-span-id", ContextManager.getSpanId());
                     addHeaderMethod.invoke(headers, "x-BitDiv-custom-parent-message-id", ContextManager.getMessageIdQueueNew());
+                    addHeaderMethod.invoke(headers, "x-BitDiv-custom-service-call-id", serviceCallId);
                 }
             } catch (Exception e) {
                 if (LoggerStatusContent.isErrorsOrDebug()) {
@@ -165,7 +173,8 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
                         ReflectionUtils.objectToString(responseHeaders),
                         responseBody,
                         errorCall,
-                        ContextManager.getMessageIdQueueNew()
+                        ContextManager.getMessageIdQueueNew(),
+                        serviceCallId
                 );
             }
 

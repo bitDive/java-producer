@@ -43,6 +43,7 @@ public class FeignClientAspect {
                     false,
                     ReflectionUtils.objectToString(paramConvert(joinPoint.getArgs())),
                     MethodTypeEnum.METHOD.toString(),
+                    "",
                     ""
             );
 

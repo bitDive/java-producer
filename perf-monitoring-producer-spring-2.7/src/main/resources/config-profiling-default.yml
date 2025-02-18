@@ -3,25 +3,3 @@ application:
   serviceName: config-profiling
   packedScanner: [ default ]
 
-monitoring:
-  logLevel: INFO
-  monitoringArgumentMethod: false
-  monitoringReturnMethod: false
-  monitoringStaticMethod: false
-  monitoringOnlySpringComponent: true
-  notWorkWithSpringProfiles: [ ]
-  dataFile:
-    path: monitoringData
-    timerConvertForSend: 10
-    fileStorageTime: 30
-  sendFiles:
-    serverConsumer:
-      url: http://localhost:8080
-    schedulerTimer: 1000
-  serialization:
-    excludedPackages: [ "com.sun.", "sun.", "org.apache.", "org.springframework.", "com.zaxxer." ]
-    maxElementCollection: 500
-
-authorisation:
-  token: 34geg54gb4
-

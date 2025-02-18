@@ -8,7 +8,6 @@ import net.bytebuddy.matcher.ElementMatchers;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.util.Arrays;
 
 
 public class ByteBuddyAgentResponseWeb {
@@ -40,14 +39,23 @@ public class ByteBuddyAgentResponseWeb {
                 ContextManager.setUrlStart(extractFullUrlFromRequest(request));
                 Class<?> requestClass = request.getClass();
                 java.lang.reflect.Method getHeaderMethod = requestClass.getMethod("getHeader", String.class);
+
                 String headerMessage_Id = (String) getHeaderMethod.invoke(request, "x-BitDiv-custom-parent-message-id");
                 if (headerMessage_Id != null) {
                     ContextManager.setParentMessageIdOtherService(headerMessage_Id);
                 }
+
                 String headersSpanId = (String) getHeaderMethod.invoke(request, "x-BitDiv-custom-span-id");
                 if (headersSpanId != null) {
                     ContextManager.setSpanID(headersSpanId);
                 }
+
+                String headersServiceCallId = (String) getHeaderMethod.invoke(request, "x-BitDiv-custom-service-call-id");
+                if (headersSpanId != null) {
+                    ContextManager.setServiceCallId(headersServiceCallId);
+                }
+
+
             } catch (Exception e) {
                 if (LoggerStatusContent.isErrorsOrDebug())
                     System.err.println("error run service for org.apache.catalina.connector.CoyoteAdapte error: " + e.getMessage());

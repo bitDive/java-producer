@@ -44,7 +44,7 @@ public class SchedulerAspect {
                     ContextManager.getParentIdMessageIdQueue(),
                     true,
                     ReflectionUtils.objectToString(paramConvert(joinPoint.getArgs())),
-                    MethodTypeEnum.SCHEDULER.toString(), ""
+                    MethodTypeEnum.SCHEDULER.toString(), "", ""
             );
 
             ContextManager.setMethodCallContextQueue(UUIDMessage);

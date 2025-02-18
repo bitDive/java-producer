@@ -23,6 +23,8 @@ public class TraceMethodContext {
     private String traceId;
     private String spanId;
 
+    private String serviceCallId;
+
     private String parentIdForRest;
 
     private String startMessageId;

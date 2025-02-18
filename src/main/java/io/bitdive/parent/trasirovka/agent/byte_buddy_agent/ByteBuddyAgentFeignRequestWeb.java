@@ -10,11 +10,14 @@ import net.bytebuddy.implementation.bind.annotation.*;
 import net.bytebuddy.matcher.ElementMatchers;
 import org.apache.commons.io.IOUtils;
 
-import java.io.*;
+import java.io.InputStream;
 import java.lang.reflect.Method;
 import java.nio.charset.Charset;
 import java.time.OffsetDateTime;
-import java.util.*;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.Callable;
 
 import static io.bitdive.parent.message_producer.MessageService.sendMessageRequestUrl;
@@ -62,6 +65,8 @@ public class ByteBuddyAgentFeignRequestWeb {
             String responseBody = null;
 
             String errorCall = null;
+            String serviceCallId = UuidCreator.getTimeBased().toString();
+
 
             try {
                 Object request = args[0]; // The first argument is the request object
@@ -87,6 +92,7 @@ public class ByteBuddyAgentFeignRequestWeb {
                 // Modify the headers by adding custom headers
                 headers.put("x-BitDiv-custom-span-id", Collections.singletonList(ContextManager.getSpanId()));
                 headers.put("x-BitDiv-custom-parent-message-id", Collections.singletonList(ContextManager.getMessageIdQueueNew()));
+                headers.put("x-BitDiv-custom-service-call-id", Collections.singletonList(serviceCallId));
 
                 // Recreate the request with modified headers
                 // Get the create method
@@ -194,7 +200,8 @@ public class ByteBuddyAgentFeignRequestWeb {
                             ReflectionUtils.objectToString(responseHeaders),
                             responseBody,
                             errorCall,
-                            ContextManager.getMessageIdQueueNew()
+                            ContextManager.getMessageIdQueueNew(),
+                            serviceCallId
                     );
                 } catch (Exception e) {
                     if (LoggerStatusContent.isErrorsOrDebug()) {

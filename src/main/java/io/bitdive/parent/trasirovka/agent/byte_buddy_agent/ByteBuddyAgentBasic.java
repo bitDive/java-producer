@@ -117,12 +117,14 @@ public class ByteBuddyAgentBasic {
                 String UUIDMessage = null;
 
                 String urlVal = "";
+                String serviceCallId = "";
                 if (flagNewSpan.getVal() &&
                         (flagNewSpan.getKey() != MethodTypeEnum.METHOD && flagNewSpan.getKey() != MethodTypeEnum.SCHEDULER)
                         && ContextManager.isMessageIdQueueEmpty()
                 ) {
                     UUIDMessage = ContextManager.getMessageStart();
                     urlVal = ContextManager.getUrlStart();
+                    serviceCallId = ContextManager.getServiceCallId();
                 } else {
                     UUIDMessage = UuidCreator.getTimeBased().toString();
                 }
@@ -140,7 +142,8 @@ public class ByteBuddyAgentBasic {
                         flagNewSpan.getVal(),
                         ReflectionUtils.objectToString(paramConvert(args)),
                         flagNewSpan.getKey().toString(),
-                        urlVal
+                        urlVal,
+                        serviceCallId
                 );
 
                 ContextManager.setMethodCallContextQueue(UUIDMessage);
