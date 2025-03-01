@@ -1,7 +1,6 @@
 package io.bitdive.parent.aspect;
 
 import com.github.f4b6a3.uuid.UuidCreator;
-import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.ContextManager;
 import io.bitdive.parent.trasirovka.agent.utils.ReflectionUtils;
 import io.bitdive.parent.utils.MethodTypeEnum;
@@ -33,8 +32,6 @@ public class SchedulerAspect {
         try {
 
             sendMessageStart(
-                    YamlParserConfig.getProfilingConfig().getApplication().getModuleName(),
-                    YamlParserConfig.getProfilingConfig().getApplication().getServiceName(),
                     UUIDMessage,
                     methodSig.getDeclaringTypeName(),
                     methodSig.getName(),

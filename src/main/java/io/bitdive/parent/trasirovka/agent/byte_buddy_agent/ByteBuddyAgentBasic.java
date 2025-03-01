@@ -130,8 +130,6 @@ public class ByteBuddyAgentBasic {
                 }
 
                 sendMessageStart(
-                        YamlParserConfig.getProfilingConfig().getApplication().getModuleName(),
-                        YamlParserConfig.getProfilingConfig().getApplication().getServiceName(),
                         UUIDMessage,
                         method.getDeclaringClass().getName(),
                         method.getName(),

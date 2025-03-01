@@ -3,11 +3,23 @@ package io.bitdive.parent.trasirovka.agent.utils;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class SQLUtils {
 
     public static String getSQLFromStatement(Object stmt) {
-        return stmt.toString();
+        return extractSQL(stmt.toString());
+    }
+
+    public static String extractSQL(String input) {
+        Pattern pattern = Pattern.compile("(?i)\\b(select|update|insert|delete|with)\\b");
+        Matcher matcher = pattern.matcher(input);
+
+        if (matcher.find()) {
+            return input.substring(matcher.start());
+        }
+        return input;
     }
 
     public static String getConnectionUrlFromStatement(Object stmt) {

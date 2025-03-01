@@ -38,14 +38,14 @@ public class MessageService {
                 .collect(Collectors.joining(SPLITTER));
     }
 
-    public static void sendMessageStart(String moduleName, String serviceName, String messageId,
+    public static void sendMessageStart(String messageId,
                                         String className, String methodName, String traceId, String spanId,
                                         OffsetDateTime dateStart, String parentMessage, boolean inPointFlag,
                                         String args, String operationType, String urlRequest, String serviceCallId) {
         sendMessage(buildMessage(
                 MessageTypeEnum.STAR.name(),
-                moduleName,
-                serviceName,
+                YamlParserConfig.getProfilingConfig().getApplication().getModuleName(),
+                YamlParserConfig.getProfilingConfig().getApplication().getServiceName(),
                 messageId,
                 className,
                 methodName,
@@ -115,6 +115,18 @@ public class MessageService {
                 connectionUrl,
                 dateStart.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
                 parentMessageId,
+                YamlParserConfig.getLibraryVersion()
+        ));
+    }
+
+    public static void sendMessageCriticalDBError(String url, String ErrorText) {
+        sendMessage(buildMessage(
+                MessageTypeEnum.CRITICAL_DB_ERROR.name(),
+                YamlParserConfig.getProfilingConfig().getApplication().getModuleName(),
+                YamlParserConfig.getProfilingConfig().getApplication().getServiceName(),
+                url,
+                ErrorText,
+                OffsetDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
                 YamlParserConfig.getLibraryVersion()
         ));
     }

@@ -66,6 +66,7 @@ public class ByteBuddyAgentInitializer implements ApplicationContextInitializer<
             ByteBuddyAgentCatalinaResponse.init();
             ByteBuddyAgentFeignRequestWeb.init();
             ByteBuddySimpleClientHttpResponse.init();
+            ByteBuddyAgentSqlDriver.init();
 
             GenerateJvmMetrics.init();
             initializeAgent = true;

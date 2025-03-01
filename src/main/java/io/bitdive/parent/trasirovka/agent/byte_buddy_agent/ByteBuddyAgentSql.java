@@ -9,7 +9,6 @@ import net.bytebuddy.asm.Advice;
 import net.bytebuddy.matcher.ElementMatchers;
 
 import java.lang.reflect.Method;
-import java.sql.PreparedStatement;
 import java.sql.Statement;
 import java.time.OffsetDateTime;
 
@@ -21,11 +20,25 @@ public class ByteBuddyAgentSql {
 
     public static void init() {
         new AgentBuilder.Default()
-                .type(
+                .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
+                /*.type(target -> {
+
+                    List<TypeDescription.Generic> interfaces = target.getInterfaces();
+                    return //!Objects.requireNonNull(target.getCanonicalName()).contains("Hikari") &&
+                            //interfaces.size() == 1 &&
+                            (//interfaces.get(0).represents(PreparedStatement.class) ||
+                                    interfaces.stream().anyMatch(f -> f.represents(Statement.class)));
+                })*/
+                .type(target ->
+                        target.getSuperClass() != null &&
+                                target.getSuperClass().getInterfaces().stream().noneMatch(i -> i.represents(Statement.class)) &&
+                                target.getInterfaces().stream().anyMatch(i -> i.represents(Statement.class))
+                )
+                /*.type(
                         ElementMatchers.isSubTypeOf(PreparedStatement.class)
                                 .or(ElementMatchers.isSubTypeOf(Statement.class))
-                                .and(ElementMatchers.nameContains("jdbc"))
-                )
+                                .and(ElementMatchers.nameContains("jdbc").or(ElementMatchers.nameContains("Statement")))
+                )*/
                 .transform((builder, typeDescription, classLoader, module, dd) ->
                         builder.visit(Advice.to(SqlAdvice.class)
                                 .on(ElementMatchers.named("executeQuery")
@@ -33,6 +46,7 @@ public class ByteBuddyAgentSql {
                                         .or(ElementMatchers.named("execute"))
                                         .and(ElementMatchers.not(ElementMatchers.nameContains("Internal")))
                                 )
+
                         )
                 )
                 .installOnByteBuddyAgent();
@@ -42,10 +56,19 @@ public class ByteBuddyAgentSql {
 
         @Advice.OnMethodEnter
         public static MethodContext onEnter(@Advice.This Object stmt,
-                                            @Advice.Origin Method method) {
+                                            @Advice.Origin Method method,
+                                            @Advice.AllArguments Object[] args) {
+
             MethodContext context = new MethodContext();
 
-            String sqlFromStatement = SQLUtils.getSQLFromStatement(stmt);
+            String sqlFromStatement = "";
+
+            if (args.length == 1) {
+                sqlFromStatement = args[0].toString();
+            } else {
+                sqlFromStatement = SQLUtils.getSQLFromStatement(stmt);
+            }
+
             String connectionUrl = SQLUtils.getConnectionUrlFromStatement(stmt);
 
             context.flagNoMonitoring = sqlFromStatement == null || sqlFromStatement.isEmpty();
@@ -56,6 +79,7 @@ public class ByteBuddyAgentSql {
 
             try {
                 if (!context.flagNoMonitoring && !ContextManager.isMessageIdQueueEmpty()) {
+
                     sendMessageSQLStart(
                             context.UUIDMessage,
                             context.traceId,
