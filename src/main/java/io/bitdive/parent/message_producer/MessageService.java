@@ -5,12 +5,15 @@ import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import io.bitdive.parent.trasirovka.agent.utils.MessageTypeEnum;
 import org.apache.logging.log4j.Logger;
 
+import java.net.URI;
+import java.net.URLDecoder;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.Arrays;
 import java.util.Optional;
-import java.util.stream.Collectors;
+
+import static io.bitdive.parent.trasirovka.agent.utils.JsonSerializer.SENSITIVE_KEYWORDS;
 
 public class MessageService {
     private static final Logger logger = LibraryLoggerConfig.getLogger(MessageService.class);
@@ -19,23 +22,76 @@ public class MessageService {
 
 
     private static void sendMessage(String message) {
-        byte[] messageByte = message.replace("\n", "")
-                .replace("\r", "")
-                .getBytes(StandardCharsets.UTF_8);
-        String messageUtf8 = new String(messageByte, StandardCharsets.UTF_8);
-        if (LoggerStatusContent.isDebug()) System.out.println(messageUtf8);
-        logger.info(messageUtf8);
+        if (message.indexOf('\n') >= 0 || message.indexOf('\r') >= 0) {
+            message = message.replace("\n", "").replace("\r", "");
+        }
+        if (LoggerStatusContent.isDebug()) {
+            System.out.println(message);
+        }
+        logger.info(message);
     }
 
     private static String buildMessage(String... parts) {
-        return Arrays.stream(parts)
-                .map(s -> {
-                    if (s == null)
-                        return "";
-                    else
-                        return s.equals("null") ? "" : s;
-                })
-                .collect(Collectors.joining(SPLITTER));
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < parts.length; i++) {
+            String s = parts[i];
+            if (s == null || "null".equals(s)) {
+                s = "";
+            }
+            sb.append(s);
+            if (i < parts.length - 1) {
+                sb.append(SPLITTER);
+            }
+        }
+        return sb.toString();
+    }
+
+    public static String sanitizeUrl(String url) {
+        try {
+            URI uri = new URI(url);
+            String query = uri.getRawQuery();
+
+            if (query == null || query.isEmpty()) {
+                return url;
+            }
+
+            StringBuilder newQuery = new StringBuilder();
+            String[] pairs = query.split("&");
+
+            for (int i = 0; i < pairs.length; i++) {
+                String pair = pairs[i];
+                int idx = pair.indexOf("=");
+                if (idx > 0) {
+                    String key = URLDecoder.decode(pair.substring(0, idx), StandardCharsets.UTF_8.name());
+                    String value = pair.substring(idx + 1);
+
+                    if (SENSITIVE_KEYWORDS.contains(key)) {
+                        value = URLEncoder.encode("*****", StandardCharsets.UTF_8.name());
+                    }
+
+                    newQuery.append(URLEncoder.encode(key, StandardCharsets.UTF_8.name()))
+                            .append("=")
+                            .append(value);
+                } else {
+                    newQuery.append(pair);
+                }
+                if (i < pairs.length - 1) {
+                    newQuery.append("&");
+                }
+            }
+
+            URI sanitizedUri = new URI(
+                    uri.getScheme(),
+                    uri.getAuthority(),
+                    uri.getPath(),
+                    newQuery.toString(),
+                    uri.getFragment()
+            );
+
+            return sanitizedUri.toString();
+        } catch (Exception e) {
+            return url;
+        }
     }
 
     public static void sendMessageStart(String messageId,
@@ -56,7 +112,7 @@ public class MessageService {
                 Boolean.toString(inPointFlag),
                 args,
                 operationType,
-                urlRequest != null ? urlRequest : "",
+                urlRequest != null ? sanitizeUrl(urlRequest) : "",
                 YamlParserConfig.getLibraryVersion(),
                 YamlParserConfig.getUUIDService(),
                 serviceCallId
@@ -78,7 +134,7 @@ public class MessageService {
 
     public static void sendMessageRequestUrl(String messageId, String traceId, String spanId,
                                              OffsetDateTime dateStart, OffsetDateTime dateEnd,
-                                             String URI, String method, String headers, String body,
+                                             String URL, String method, String headers, String body,
                                              String statusCode, String responseHeaders, String responseBody,
                                              String errorCall, String parentMessageId, String serviceCallId
     ) {
@@ -89,7 +145,7 @@ public class MessageService {
                 spanId,
                 dateStart.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
                 dateEnd.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
-                URI,
+                sanitizeUrl(URL),
                 method,
                 headers,
                 body,
@@ -124,7 +180,7 @@ public class MessageService {
                 MessageTypeEnum.CRITICAL_DB_ERROR.name(),
                 YamlParserConfig.getProfilingConfig().getApplication().getModuleName(),
                 YamlParserConfig.getProfilingConfig().getApplication().getServiceName(),
-                url,
+                sanitizeUrl(url),
                 ErrorText,
                 OffsetDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
                 YamlParserConfig.getLibraryVersion()

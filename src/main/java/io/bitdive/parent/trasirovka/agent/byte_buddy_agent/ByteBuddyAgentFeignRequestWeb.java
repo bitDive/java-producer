@@ -11,6 +11,7 @@ import net.bytebuddy.matcher.ElementMatchers;
 import org.apache.commons.io.IOUtils;
 
 import java.io.InputStream;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.charset.Charset;
 import java.time.OffsetDateTime;
@@ -28,7 +29,9 @@ public class ByteBuddyAgentFeignRequestWeb {
         try {
             Class<?> clientClass = Class.forName("feign.Client");
             new AgentBuilder.Default()
-                    .type(ElementMatchers.isSubTypeOf(clientClass).and(ElementMatchers.not(ElementMatchers.nameContains("loadbalancer"))))
+                    .type(ElementMatchers.isSubTypeOf(clientClass)
+                            .and(ElementMatchers.not(ElementMatchers.nameContains("loadbalancer")))
+                    )
                     .transform((builder, typeDescription, classLoader, module, sd) ->
                             builder.method(ElementMatchers.named("execute"))
                                     .intercept(MethodDelegation.to(FeignClientInterceptor.class))
@@ -45,7 +48,7 @@ public class ByteBuddyAgentFeignRequestWeb {
         public static Object intercept(@SuperCall Callable<Object> zuper,
                                        @SuperMethod Method superMethod,
                                        @This Object proxy,
-                                       @AllArguments Object args[]) throws Exception {
+                                       @AllArguments Object args[]) throws Throwable {
             if (ContextManager.getMessageIdQueueNew().isEmpty()) return zuper.call();
             Object retVal = null;
             Throwable thrown = null;
@@ -123,9 +126,9 @@ public class ByteBuddyAgentFeignRequestWeb {
             try {
                 // Proceed with the original method call
                 retVal = superMethod.invoke(proxy, args);
-            } catch (Throwable t) {
-                thrown = t;
-                throw t;
+            } catch (InvocationTargetException t) {
+                thrown = t.getCause();
+                throw t.getCause();
             } finally {
                 dateEnd = OffsetDateTime.now();
 

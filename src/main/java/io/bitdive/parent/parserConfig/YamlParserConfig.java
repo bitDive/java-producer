@@ -112,7 +112,7 @@ public class YamlParserConfig {
                     if (monitoringConfigOverride.getSerialization().getExcludedPackages() != null) {
                         defaultVal.getSerialization().setExcludedPackages(
                                 Stream.concat(Arrays.stream(monitoringConfigOverride.getSerialization().getExcludedPackages()),
-                                                Arrays.stream(baseConfig.getMonitoring().getSerialization().getExcludedPackages())
+                                                Arrays.stream(defaultVal.getSerialization().getExcludedPackages())
                                         )
                                         .toArray(String[]::new)
                         );
