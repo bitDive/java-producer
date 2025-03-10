@@ -85,6 +85,7 @@ public class ByteBuddyAgentBasic {
                                         .and(ElementMatchers.not(ElementMatchers.isAnnotatedWith(ElementMatchers.nameEndsWith("Bean"))))
                                         .and(ElementMatchers.not(ElementMatchers.isAnnotatedWith(ElementMatchers.nameEndsWith("ExceptionHandler"))))
                                         .and(ElementMatchers.not(ElementMatchers.isAnnotatedWith(ElementMatchers.named("org.springframework.scheduling.annotation.Scheduled"))))
+                                        .and(ElementMatchers.not(ElementMatchers.isAnnotatedWith(ElementMatchers.named("org.springframework.kafka.annotation.KafkaListener"))))
                                         .and(ElementMatchers.not(ElementMatchers.nameMatches(".*\\$.*")))
                                         .and(ElementMatchers.not(ElementMatchers.isSynthetic()))
                                         .and(ElementMatchers.not(ElementMatchers.isDeclaredBy(Object.class)))
@@ -106,8 +107,9 @@ public class ByteBuddyAgentBasic {
                 if (!YamlParserConfig.getProfilingConfig().getMonitoring().getMonitoringStaticMethod() && isStaticMethod(method)) {
                     return;
                 }
-                if (isSerializationContext()) return;
-
+                if (!YamlParserConfig.getProfilingConfig().getMonitoring().getMonitoringOnlySpringComponent()) {
+                    if (isSerializationContext()) return;
+                }
                 Pair<MethodTypeEnum, Boolean> flagNewSpan = identificationMethod(method);
 
                 if (!flagNewSpan.getVal() && ContextManager.isMessageIdQueueEmpty()) {

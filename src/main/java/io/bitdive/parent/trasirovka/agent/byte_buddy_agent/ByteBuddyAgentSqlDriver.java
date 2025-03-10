@@ -5,7 +5,6 @@ import net.bytebuddy.implementation.MethodDelegation;
 import net.bytebuddy.implementation.bind.annotation.*;
 import net.bytebuddy.matcher.ElementMatchers;
 
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.sql.Driver;
 import java.util.concurrent.Callable;
@@ -37,9 +36,9 @@ public class ByteBuddyAgentSqlDriver {
 
             try {
                 return zuper.call();
-            } catch (InvocationTargetException t) {
-                sendMessageCriticalDBError(url, t.getCause().getMessage());
-                throw t.getCause();
+            } catch (Exception t) {
+                sendMessageCriticalDBError(url, t.getMessage());
+                throw t;
             }
         }
     }

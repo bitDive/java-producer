@@ -119,6 +119,31 @@ public class MessageService {
         ));
     }
 
+    public static void sendMessageKafkaConsumer(String messageId,
+                                                String className, String methodName, String traceId, String spanId,
+                                                OffsetDateTime dateStart, OffsetDateTime dateEnd, boolean inPointFlag,
+                                                String args, String topicName, String groupName, String ServerName, String errorMessage) {
+        sendMessage(buildMessage(
+                MessageTypeEnum.KAFKA_CONSUMER.name(),
+                YamlParserConfig.getProfilingConfig().getApplication().getModuleName(),
+                YamlParserConfig.getProfilingConfig().getApplication().getServiceName(),
+                messageId,
+                className,
+                methodName,
+                traceId,
+                spanId,
+                dateStart.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                dateEnd.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                Boolean.toString(inPointFlag),
+                args,
+                topicName,
+                groupName,
+                ServerName,
+                errorMessage,
+                YamlParserConfig.getLibraryVersion()
+        ));
+    }
+
     public static void sendMessageEnd(String messageId, OffsetDateTime dateEnd,
                                       String errorCallMessage, String methodReturn, String traceId, String spanId) {
         sendMessage(buildMessage(
@@ -159,6 +184,27 @@ public class MessageService {
         ));
     }
 
+    public static void sendMessageKafkaSend(String messageId, String spanId, String traceId,
+                                            String topicName, String messageBody, String serviceName,
+                                            OffsetDateTime dateStart, OffsetDateTime dateEnd, String parentMessageId,
+                                            String errorMessage
+    ) {
+        sendMessage(buildMessage(
+                MessageTypeEnum.KAFKA_SEND.name(),
+                messageId,
+                spanId,
+                traceId,
+                topicName,
+                messageBody,
+                serviceName,
+                dateStart.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                dateEnd.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                parentMessageId,
+                YamlParserConfig.getLibraryVersion(),
+                errorMessage
+        ));
+    }
+
     public static void sendMessageSQLStart(String messageId, String traceId, String spanId,
                                            String sql, String connectionUrl,
                                            OffsetDateTime dateStart, String parentMessageId) {
@@ -181,6 +227,18 @@ public class MessageService {
                 YamlParserConfig.getProfilingConfig().getApplication().getModuleName(),
                 YamlParserConfig.getProfilingConfig().getApplication().getServiceName(),
                 sanitizeUrl(url),
+                ErrorText,
+                OffsetDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                YamlParserConfig.getLibraryVersion()
+        ));
+    }
+
+    public static void sendMessageCriticalKafkaError(String url, String ErrorText) {
+        sendMessage(buildMessage(
+                MessageTypeEnum.CRITICAL_KAFKA_ERROR.name(),
+                YamlParserConfig.getProfilingConfig().getApplication().getModuleName(),
+                YamlParserConfig.getProfilingConfig().getApplication().getServiceName(),
+                url,
                 ErrorText,
                 OffsetDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
                 YamlParserConfig.getLibraryVersion()

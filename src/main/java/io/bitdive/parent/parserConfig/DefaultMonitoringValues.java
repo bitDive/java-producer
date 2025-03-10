@@ -29,7 +29,7 @@ public class DefaultMonitoringValues {
         // serialization
         ProfilingConfig.MonitoringConfig.Serialization serialization = new ProfilingConfig.MonitoringConfig.Serialization();
         serialization.setExcludedPackages(new String[]{
-                "com.sun.", "sun.", "org.apache.", "org.springframework.", "com.zaxxer.", "HttpServletResponse"
+                "com.sun.", "sun.", "org.apache.", "org.springframework.", "com.zaxxer.", "jakarta.servlet.http.HttpServletResponse"
         });
         serialization.setMaxElementCollection(500);
         config.setSerialization(serialization);

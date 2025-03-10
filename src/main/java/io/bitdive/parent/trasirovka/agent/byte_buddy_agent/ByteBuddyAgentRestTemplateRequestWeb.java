@@ -16,7 +16,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.charset.Charset;
 import java.time.OffsetDateTime;
@@ -109,9 +108,9 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
 
             try {
                 retVal = zuper.call();
-            } catch (InvocationTargetException t) {
-                thrown = t.getCause();
-                throw t.getCause();
+            } catch (Exception t) {
+                thrown = t;
+                throw t;
             } finally {
                 dateEnd = OffsetDateTime.now();
 

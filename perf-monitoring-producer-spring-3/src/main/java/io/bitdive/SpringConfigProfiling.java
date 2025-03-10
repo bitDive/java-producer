@@ -1,9 +1,6 @@
 package io.bitdive;
 
-import io.bitdive.parent.aspect.FeignClientAspect;
-import io.bitdive.parent.aspect.RepositoryAspect;
-import io.bitdive.parent.aspect.SchedulerAspect;
-import io.bitdive.parent.aspect.YamlParserCondition;
+import io.bitdive.parent.aspect.*;
 import org.springframework.beans.factory.annotation.Configurable;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.context.annotation.Bean;
@@ -25,7 +22,6 @@ public class SpringConfigProfiling {
     @ConditionalOnClass(name = "org.springframework.cloud.openfeign.FeignClient")
     @Conditional(YamlParserCondition.class)
     public FeignClientAspect feignClientInterceptor() {
-
         return new FeignClientAspect();
     }
 
@@ -35,5 +31,13 @@ public class SpringConfigProfiling {
     public SchedulerAspect schedulerAspect() {
         return new SchedulerAspect();
     }
+
+    @Bean
+    @ConditionalOnClass(name = "org.springframework.kafka.annotation.KafkaListener")
+    @Conditional(YamlParserCondition.class)
+    public KafkaListenerAspect kafkaListenerAspect() {
+        return new KafkaListenerAspect();
+    }
+
 
 }

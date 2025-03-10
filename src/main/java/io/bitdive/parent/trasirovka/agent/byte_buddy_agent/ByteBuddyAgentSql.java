@@ -21,24 +21,11 @@ public class ByteBuddyAgentSql {
     public static void init() {
         new AgentBuilder.Default()
                 .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
-                /*.type(target -> {
-
-                    List<TypeDescription.Generic> interfaces = target.getInterfaces();
-                    return //!Objects.requireNonNull(target.getCanonicalName()).contains("Hikari") &&
-                            //interfaces.size() == 1 &&
-                            (//interfaces.get(0).represents(PreparedStatement.class) ||
-                                    interfaces.stream().anyMatch(f -> f.represents(Statement.class)));
-                })*/
                 .type(target ->
                         target.getSuperClass() != null &&
                                 target.getSuperClass().getInterfaces().stream().noneMatch(i -> i.represents(Statement.class)) &&
                                 target.getInterfaces().stream().anyMatch(i -> i.represents(Statement.class))
                 )
-                /*.type(
-                        ElementMatchers.isSubTypeOf(PreparedStatement.class)
-                                .or(ElementMatchers.isSubTypeOf(Statement.class))
-                                .and(ElementMatchers.nameContains("jdbc").or(ElementMatchers.nameContains("Statement")))
-                )*/
                 .transform((builder, typeDescription, classLoader, module, dd) ->
                         builder.visit(Advice.to(SqlAdvice.class)
                                 .on(ElementMatchers.named("executeQuery")

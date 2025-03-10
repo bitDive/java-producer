@@ -69,6 +69,9 @@ public class ByteBuddyAgentInitializer implements ApplicationContextInitializer<
             ByteBuddyAgentFeignRequestWeb.init();
             ByteBuddySimpleClientHttpResponse.init();
             ByteBuddyAgentSqlDriver.init();
+            ByteBuddyAgentKafkaSend.init();
+            ByteBuddyAgentKafkaInterceptor.init();
+            KafkaConsumerAgent.init();
 
             GenerateJvmMetrics.init();
             initializeAgent = true;
