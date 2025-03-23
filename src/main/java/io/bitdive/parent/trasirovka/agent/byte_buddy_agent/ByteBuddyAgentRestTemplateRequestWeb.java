@@ -52,7 +52,7 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
             Object retVal = null;
             Throwable thrown = null;
 
-            String uri = null;
+            String url = null;
             String httpMethod = null;
             Object headers = null;
             Object body = null;
@@ -73,7 +73,7 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
                 if (request.getClass().getName().contains("org.springframework.http.client")) {
                     Method getUriMethod = request.getClass().getMethod("getURI");
                     getUriMethod.setAccessible(true);
-                    uri = Optional.ofNullable(getUriMethod.invoke(request)).map(Object::toString).orElse("");
+                    url = Optional.ofNullable(getUriMethod.invoke(request)).map(Object::toString).orElse("");
 
                     Method getMethodMethod = request.getClass().getMethod("getMethod");
                     getMethodMethod.setAccessible(true);
@@ -158,24 +158,25 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
                 if (thrown != null) {
                     errorCall = getaNullThrowable(thrown);
                 }
-
-                sendMessageRequestUrl(
-                        UuidCreator.getTimeBased().toString(),
-                        ContextManager.getTraceId(),
-                        ContextManager.getSpanId(),
-                        dateStart,
-                        dateEnd,
-                        uri,
-                        httpMethod,
-                        ReflectionUtils.objectToString(headers),
-                        ReflectionUtils.objectToString(body),
-                        responseStatus,
-                        ReflectionUtils.objectToString(responseHeaders),
-                        responseBody,
-                        errorCall,
-                        ContextManager.getMessageIdQueueNew(),
-                        serviceCallId
-                );
+                if (url != null && !url.contains("eureka/apps")) {
+                    sendMessageRequestUrl(
+                            UuidCreator.getTimeBased().toString(),
+                            ContextManager.getTraceId(),
+                            ContextManager.getSpanId(),
+                            dateStart,
+                            dateEnd,
+                            url,
+                            httpMethod,
+                            ReflectionUtils.objectToString(headers),
+                            ReflectionUtils.objectToString(body),
+                            responseStatus,
+                            ReflectionUtils.objectToString(responseHeaders),
+                            responseBody,
+                            errorCall,
+                            ContextManager.getMessageIdQueueNew(),
+                            serviceCallId
+                    );
+                }
             }
 
             return retVal;

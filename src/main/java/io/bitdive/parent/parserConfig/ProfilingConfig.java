@@ -12,7 +12,7 @@ import java.util.stream.Stream;
 @Setter
 public class ProfilingConfig {
 
-    private String notWorkWithSpringProfiles;
+    private List<String> notWorkWithSpringProfiles;
 
     private ApplicationConfig application;
     private List<MonitoringConfig> monitoringConfigs = new ArrayList<>();

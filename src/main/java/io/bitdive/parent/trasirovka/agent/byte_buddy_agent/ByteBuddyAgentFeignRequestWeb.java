@@ -188,24 +188,26 @@ public class ByteBuddyAgentFeignRequestWeb {
                         errorCall = getaNullThrowable(thrown);
                     }
 
-                    // Call sendMessageRequestUrl with the collected data
-                    sendMessageRequestUrl(
-                            UuidCreator.getTimeBased().toString(),
-                            ContextManager.getTraceId(),
-                            ContextManager.getSpanId(),
-                            dateStart,
-                            dateEnd,
-                            url,
-                            httpMethod,
-                            ReflectionUtils.objectToString(headers),
-                            body != null ? new String(body, charset != null ? charset : Charset.defaultCharset()) : null,
-                            responseStatus,
-                            ReflectionUtils.objectToString(responseHeaders),
-                            responseBody,
-                            errorCall,
-                            ContextManager.getMessageIdQueueNew(),
-                            serviceCallId
-                    );
+                    if (url != null && !url.contains("eureka/apps")) {
+                        // Call sendMessageRequestUrl with the collected data
+                        sendMessageRequestUrl(
+                                UuidCreator.getTimeBased().toString(),
+                                ContextManager.getTraceId(),
+                                ContextManager.getSpanId(),
+                                dateStart,
+                                dateEnd,
+                                url,
+                                httpMethod,
+                                ReflectionUtils.objectToString(headers),
+                                body != null ? new String(body, charset != null ? charset : Charset.defaultCharset()) : null,
+                                responseStatus,
+                                ReflectionUtils.objectToString(responseHeaders),
+                                responseBody,
+                                errorCall,
+                                ContextManager.getMessageIdQueueNew(),
+                                serviceCallId
+                        );
+                    }
                 } catch (Exception e) {
                     if (LoggerStatusContent.isErrorsOrDebug()) {
                         System.err.println("Error processing Feign Request/Response: " + e.getMessage());

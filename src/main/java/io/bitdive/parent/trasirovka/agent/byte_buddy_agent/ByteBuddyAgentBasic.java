@@ -64,6 +64,7 @@ public class ByteBuddyAgentBasic {
 
     public static void init() {
         new AgentBuilder.Default()
+                .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
                 .type(
                         getApplicationPackedScanner(YamlParserConfig.getProfilingConfig().getApplication().getPackedScanner())
                                 .and(getSpringComponentMatcher())

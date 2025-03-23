@@ -13,7 +13,11 @@ import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Optional;
 
-import static io.bitdive.parent.trasirovka.agent.utils.JsonSerializer.SENSITIVE_KEYWORDS;
+import static io.bitdive.parent.trasirovka.agent.utils.ReflectionUtils.SENSITIVE_KEYWORDS;
+
+
+//import static io.bitdive.parent.trasirovka.agent.utils.JsonSerializerBitDive.SENSITIVE_KEYWORDS;
+
 
 public class MessageService {
     private static final Logger logger = LibraryLoggerConfig.getLogger(MessageService.class);
@@ -22,9 +26,6 @@ public class MessageService {
 
 
     private static void sendMessage(String message) {
-        if (message.indexOf('\n') >= 0 || message.indexOf('\r') >= 0) {
-            message = message.replace("\n", "").replace("\r", "");
-        }
         if (LoggerStatusContent.isDebug()) {
             System.out.println(message);
         }
@@ -32,17 +33,16 @@ public class MessageService {
     }
 
     private static String buildMessage(String... parts) {
+
+        int length = parts.length - 1;
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < parts.length; i++) {
-            String s = parts[i];
-            if (s == null || "null".equals(s)) {
-                s = "";
-            }
-            sb.append(s);
-            if (i < parts.length - 1) {
+            sb.append(parts[i]);
+            if (i < length) {
                 sb.append(SPLITTER);
             }
         }
+
         return sb.toString();
     }
 
@@ -65,8 +65,11 @@ public class MessageService {
                     String key = URLDecoder.decode(pair.substring(0, idx), StandardCharsets.UTF_8.name());
                     String value = pair.substring(idx + 1);
 
-                    if (SENSITIVE_KEYWORDS.contains(key)) {
-                        value = URLEncoder.encode("*****", StandardCharsets.UTF_8.name());
+                    for (String litresMask : SENSITIVE_KEYWORDS) {
+                        if (litresMask.contains(key.toLowerCase())) {
+                            value = URLEncoder.encode("*****", StandardCharsets.UTF_8.name());
+                            break;
+                        }
                     }
 
                     newQuery.append(URLEncoder.encode(key, StandardCharsets.UTF_8.name()))
@@ -98,7 +101,8 @@ public class MessageService {
                                         String className, String methodName, String traceId, String spanId,
                                         OffsetDateTime dateStart, String parentMessage, boolean inPointFlag,
                                         String args, String operationType, String urlRequest, String serviceCallId) {
-        sendMessage(buildMessage(
+        sendMessage(
+                buildMessage(
                 MessageTypeEnum.STAR.name(),
                 YamlParserConfig.getProfilingConfig().getApplication().getModuleName(),
                 YamlParserConfig.getProfilingConfig().getApplication().getServiceName(),
@@ -109,14 +113,14 @@ public class MessageService {
                 spanId,
                 dateStart.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
                 parentMessage,
-                Boolean.toString(inPointFlag),
+                        String.valueOf(inPointFlag),
                 args,
                 operationType,
-                urlRequest != null ? sanitizeUrl(urlRequest) : "",
+                        (urlRequest != null ? sanitizeUrl(urlRequest) : ""),
                 YamlParserConfig.getLibraryVersion(),
                 YamlParserConfig.getUUIDService(),
                 serviceCallId
-        ));
+                ));
     }
 
     public static void sendMessageKafkaConsumer(String messageId,
@@ -163,25 +167,25 @@ public class MessageService {
                                              String statusCode, String responseHeaders, String responseBody,
                                              String errorCall, String parentMessageId, String serviceCallId
     ) {
-        sendMessage(buildMessage(
-                MessageTypeEnum.WEB_REQUEST.name(),
-                messageId,
-                traceId,
-                spanId,
-                dateStart.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
-                dateEnd.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
-                sanitizeUrl(URL),
-                method,
-                headers,
-                body,
-                statusCode,
-                responseHeaders,
-                responseBody,
-                errorCall,
-                parentMessageId,
-                YamlParserConfig.getLibraryVersion(),
+        sendMessage(//buildMessage(
+                MessageTypeEnum.WEB_REQUEST.name() + "," +
+                        messageId + "," +
+                        traceId + "," +
+                        spanId + "," +
+                        dateStart.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME) + "," +
+                        dateEnd.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME) + "," +
+                        sanitizeUrl(URL) + "," +
+                        method + "," +
+                        headers + "," +
+                        body + "," +
+                        statusCode + "," +
+                        responseHeaders + "," +
+                        responseBody + "," +
+                        errorCall + "," +
+                        parentMessageId + "," +
+                        YamlParserConfig.getLibraryVersion() + "," +
                 serviceCallId
-        ));
+        );
     }
 
     public static void sendMessageKafkaSend(String messageId, String spanId, String traceId,

@@ -7,10 +7,18 @@
         <option value="$PROJECT_DIR$/pom.xml" />
         <option value="$PROJECT_DIR$/perf-monitoring-producer-spring-2.7/pom.xml" />
         <option value="$PROJECT_DIR$/perf-monitoring-producer-spring-3/pom.xml" />
+        <option value="$PROJECT_DIR$/generate-monitoring-method/pom.xml" />
       </list>
     </option>
+    <option name="ignoredFiles">
+      <set>
+        <option value="$PROJECT_DIR$/lombok-bitdive-core/pom.xml" />
+        <option value="$PROJECT_DIR$/lombok-bitdive-java8/pom.xml" />
+        <option value="$PROJECT_DIR$/lombok-bitdive-java9/pom.xml" />
+      </set>
+    </option>
   </component>
-  <component name="ProjectRootManager" version="2" languageLevel="JDK_17" default="true" project-jdk-name="corretto-17" project-jdk-type="JavaSDK">
+  <component name="ProjectRootManager" version="2" languageLevel="JDK_1_8" default="true" project-jdk-name="corretto-1.8" project-jdk-type="JavaSDK">
     <output url="file://$PROJECT_DIR$/out" />
   </component>
 </project>

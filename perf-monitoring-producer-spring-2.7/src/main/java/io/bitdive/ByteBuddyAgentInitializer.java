@@ -11,6 +11,7 @@ import org.springframework.context.ApplicationContextInitializer;
 import org.springframework.context.ConfigurableApplicationContext;
 
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -36,7 +37,7 @@ public class ByteBuddyAgentInitializer implements ApplicationContextInitializer<
 
             if (YamlParserConfig.getProfilingConfig().getNotWorkWithSpringProfiles() != null) {
                 Set<String> activeProfileSet = Arrays.stream(activeProfiles).collect(Collectors.toSet());
-                Set<String> notWorkProfileSet = Arrays.stream(new String[]{YamlParserConfig.getProfilingConfig().getNotWorkWithSpringProfiles()}).collect(Collectors.toSet());
+                Set<String> notWorkProfileSet = new HashSet<>(YamlParserConfig.getProfilingConfig().getNotWorkWithSpringProfiles());
 
                 activeProfileSet.retainAll(notWorkProfileSet);
                 if (!activeProfileSet.isEmpty()) {

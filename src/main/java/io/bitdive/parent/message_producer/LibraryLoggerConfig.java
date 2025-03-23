@@ -14,6 +14,12 @@ import java.util.Optional;
 
 
 public class LibraryLoggerConfig {
+    static {
+        // Устанавливаем системное свойство при загрузке класса
+        System.setProperty("Log4jContextSelector",
+                "org.apache.logging.log4j.core.async.AsyncLoggerContextSelector");
+    }
+
     private static LoggerContext loggerContext;
 
 
@@ -73,9 +79,12 @@ public class LibraryLoggerConfig {
 
         builder.add(customHttpAppender);
 
-        builder.add(builder.newRootLogger(Level.INFO)
+        RootLoggerComponentBuilder rootLogger = builder.newRootLogger(Level.INFO)
                 .add(builder.newAppenderRef("AsyncAppender"))
-                .add(builder.newAppenderRef("CustomHttpAppender")));
+                .add(builder.newAppenderRef("CustomHttpAppender"))
+                .addAttribute("includeLocation", "false");
+
+        builder.add(rootLogger);
 
 
         Configuration configuration = builder.build();
