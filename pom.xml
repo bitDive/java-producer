@@ -6,7 +6,7 @@
 
     <groupId>io.bitdive</groupId>
     <artifactId>java-producer-parent</artifactId>
-    <version>1.0.10</version>
+    <version>1.1.1</version>
     <name>parent-producer</name>
 
     <properties>
@@ -40,6 +40,7 @@
     </developers>
 
     <dependencies>
+
         <dependency>
             <groupId>com.google.code.gson</groupId>
             <artifactId>gson</artifactId>
@@ -60,7 +61,17 @@
             <artifactId>jackson-datatype-hibernate5</artifactId>
             <version>2.18.3</version>
         </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-hibernate6</artifactId>
+            <version>2.18.3</version>
+        </dependency>
 
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
+            <version>2.18.3</version>
+        </dependency>
 
         <dependency>
             <groupId>com.fasterxml.jackson.module</groupId>
@@ -131,19 +142,6 @@
             <artifactId>aspectjweaver</artifactId>
             <version>1.9.22.1</version>
             <scope>compile</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>org.springframework</groupId>
-            <artifactId>spring-context</artifactId>
-            <version>5.3.31</version>
-            <scope>compile</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>com.alibaba</groupId>
-            <artifactId>fastjson</artifactId>
-            <version>2.0.56</version>
         </dependency>
 
         <dependency>
@@ -226,7 +224,53 @@
                 </executions>
             </plugin>
 
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.2.4</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <filters>
+                                <filter>
+                                    <!--
+                                      Исключаем сигнатурные файлы,
+                                      т.к. они будут ломаться при модификации манифеста
+                                    -->
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                    </excludes>
+                                </filter>
+                                <filter>
+                                    <!--
+                                    Имена пакетов/файлов, которые хотим исключить:
+                                    Указанный ниже ресурс — тот самый "список модулей",
+                                    благодаря которому Jackson их находит автоматически
+                                    -->
+                                    <artifact>com.fasterxml.jackson.datatype:jackson-datatype-hibernate5</artifact>
+                                    <artifact>com.fasterxml.jackson.datatype:jackson-datatype-hibernate6</artifact>
+                                    <artifact>com.fasterxml.jackson.datatype:jackson-datatype-jsr310</artifact>
+                                    <artifact>com.fasterxml.jackson.datatype:jackson-datatype-jdk8</artifact>
+                                    <artifact>com.fasterxml.jackson.datatype:jackson-module-afterburner</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/services/com.fasterxml.jackson.databind.Module</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
+
+
     </build>
 
 

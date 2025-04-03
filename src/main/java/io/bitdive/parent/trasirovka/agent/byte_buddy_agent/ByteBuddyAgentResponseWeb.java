@@ -6,12 +6,13 @@ import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.matcher.ElementMatchers;
 
+import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
 
 public class ByteBuddyAgentResponseWeb {
-    public static void init() {
+    public static void init(Instrumentation instrumentation) {
         try {
             new AgentBuilder.Default()
                     .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
@@ -22,7 +23,7 @@ public class ByteBuddyAgentResponseWeb {
                                             .and(ElementMatchers.takesArguments(2))
                                     )
                             )
-                    ).installOnByteBuddyAgent();
+                    ).installOn(instrumentation);
         } catch (Exception e) {
             if (LoggerStatusContent.isErrorsOrDebug())
                 System.err.println("not found class org.apache.catalina.connector.CoyoteAdapte");

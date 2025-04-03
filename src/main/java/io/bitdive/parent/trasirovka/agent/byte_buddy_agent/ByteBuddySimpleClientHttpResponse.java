@@ -13,11 +13,12 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Field;
 import java.util.concurrent.Callable;
 
 public class ByteBuddySimpleClientHttpResponse {
-    public static void init() {
+    public static void init(Instrumentation instrumentation) {
         try {
             Class<?> clientClass = Class.forName("org.springframework.http.client.ClientHttpResponse");
             new AgentBuilder.Default()
@@ -26,7 +27,7 @@ public class ByteBuddySimpleClientHttpResponse {
                             builder.defineField("cachedBody", byte[].class, Visibility.PRIVATE)
                                     .method(ElementMatchers.named("getBody"))
                                     .intercept(MethodDelegation.to(GetBodyInterceptor.class))
-                    ).installOnByteBuddyAgent();
+                    ).installOn(instrumentation);
         } catch (Exception e) {
             if (LoggerStatusContent.isErrorsOrDebug())
                 System.err.println("Not found class feign.Client in ClassLoader.");

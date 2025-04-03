@@ -8,6 +8,7 @@ import io.bitdive.parent.trasirovka.agent.utils.ReflectionUtils;
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.asm.Advice;
 
+import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.time.OffsetDateTime;
@@ -20,7 +21,7 @@ import static net.bytebuddy.matcher.ElementMatchers.*;
 
 public class ByteBuddyAgentKafkaSend {
 
-    public static void init() {
+    public static void init(Instrumentation instrumentation) {
         new AgentBuilder.Default()
                 .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
                 .type(typeDescription ->
@@ -32,7 +33,7 @@ public class ByteBuddyAgentKafkaSend {
                                                 .and(takesArguments(2))
                                                 .and(returns(named("java.util.concurrent.Future")))))
                 )
-                .installOnByteBuddyAgent();
+                .installOn(instrumentation);
     }
 
     public static class SendAdviceKafka {

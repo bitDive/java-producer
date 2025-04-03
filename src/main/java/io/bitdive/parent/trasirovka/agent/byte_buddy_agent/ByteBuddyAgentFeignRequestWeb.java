@@ -11,6 +11,7 @@ import net.bytebuddy.matcher.ElementMatchers;
 import org.apache.commons.io.IOUtils;
 
 import java.io.InputStream;
+import java.lang.instrument.Instrumentation;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.charset.Charset;
@@ -23,9 +24,10 @@ import java.util.concurrent.Callable;
 
 import static io.bitdive.parent.message_producer.MessageService.sendMessageRequestUrl;
 import static io.bitdive.parent.trasirovka.agent.utils.DataUtils.getaNullThrowable;
+import static io.bitdive.parent.trasirovka.agent.utils.RestUtils.normalizeResponseBodyBytes;
 
 public class ByteBuddyAgentFeignRequestWeb {
-    public static void init() {
+    public static void init(Instrumentation instrumentation) {
         try {
             Class<?> clientClass = Class.forName("feign.Client");
             new AgentBuilder.Default()
@@ -35,7 +37,7 @@ public class ByteBuddyAgentFeignRequestWeb {
                     .transform((builder, typeDescription, classLoader, module, sd) ->
                             builder.method(ElementMatchers.named("execute"))
                                     .intercept(MethodDelegation.to(FeignClientInterceptor.class))
-                    ).installOnByteBuddyAgent();
+                    ).installOn(instrumentation);
         } catch (Exception e) {
             if (LoggerStatusContent.isErrorsOrDebug())
                 System.err.println("Not found class feign.Client in ClassLoader.");
@@ -165,7 +167,7 @@ public class ByteBuddyAgentFeignRequestWeb {
                             if (responseCharset == null) {
                                 responseCharset = Charset.defaultCharset();
                             }
-                            responseBody = new String(responseBodyBytes, responseCharset);
+                            responseBody = normalizeResponseBodyBytes(responseBodyBytes, responseHeaders, responseCharset);
 
                             // Create a new response object with the new body
                             Method toBuilderMethod = responseClass.getMethod("toBuilder");
@@ -199,7 +201,7 @@ public class ByteBuddyAgentFeignRequestWeb {
                                 url,
                                 httpMethod,
                                 ReflectionUtils.objectToString(headers),
-                                body != null ? new String(body, charset != null ? charset : Charset.defaultCharset()) : null,
+                                normalizeResponseBodyBytes(body, headers, charset),
                                 responseStatus,
                                 ReflectionUtils.objectToString(responseHeaders),
                                 responseBody,
@@ -217,6 +219,7 @@ public class ByteBuddyAgentFeignRequestWeb {
 
             return retVal;
         }
+
 
         // Helper method to get the response charset from headers
         private static Charset getResponseCharset(Map<String, Collection<String>> headers) {

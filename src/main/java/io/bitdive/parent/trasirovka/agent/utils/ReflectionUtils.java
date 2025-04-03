@@ -1,16 +1,19 @@
 package io.bitdive.parent.trasirovka.agent.utils;
 
 import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.module.SimpleModule;
-import com.fasterxml.jackson.datatype.hibernate5.Hibernate5Module;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.fasterxml.jackson.module.afterburner.AfterburnerModule;
 import io.bitdive.parent.parserConfig.YamlParserConfig;
+import io.bitdive.parent.trasirovka.agent.utils.objectMaperConfig.ByteArrayToPlaceholderModule;
 import io.bitdive.parent.trasirovka.agent.utils.objectMaperConfig.CollectionSizeLimiter;
 import io.bitdive.parent.trasirovka.agent.utils.objectMaperConfig.MaskingFilter;
 import io.bitdive.parent.trasirovka.agent.utils.objectMaperConfig.PackageBasedSerializerModifier;
+import io.bitdive.parent.utils.hibernateConfig.HibernateModuleLoader;
 
 import java.util.Arrays;
 import java.util.HashSet;
@@ -33,14 +36,10 @@ public class ReflectionUtils {
     static ObjectMapper mapper = new ObjectMapper();
 
     static {
-        mapper.registerModule(new AfterburnerModule());
+
 
         mapper.enable(SerializationFeature.WRITE_SELF_REFERENCES_AS_NULL);
         mapper.getFactory().disable(JsonGenerator.Feature.AUTO_CLOSE_TARGET);
-
-        mapper.registerModule(new Hibernate5Module());
-        mapper.registerModule(new Jdk8Module());
-
 
         SimpleModule module = new SimpleModule();
         module.setSerializerModifier(new CollectionSizeLimiter(MAX_COLLECTION_SIZE, INDICATOR));
@@ -53,6 +52,21 @@ public class ReflectionUtils {
         SimpleModule ignoreModule = new SimpleModule();
         ignoreModule.setSerializerModifier(new PackageBasedSerializerModifier(EXCLUDED_PACKAGES));
         mapper.registerModule(ignoreModule);
+
+        mapper.registerModule(new ByteArrayToPlaceholderModule());
+
+
+        mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        mapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
+
+        mapper.registerModule(new JavaTimeModule());
+        mapper.registerModule(new Jdk8Module());
+        mapper.registerModule(new AfterburnerModule());
+
+        Optional.ofNullable(HibernateModuleLoader.registerHibernateModule())
+                .ifPresent(moduleHibernate ->
+                        mapper.registerModule(moduleHibernate)
+                );
 
 
     }

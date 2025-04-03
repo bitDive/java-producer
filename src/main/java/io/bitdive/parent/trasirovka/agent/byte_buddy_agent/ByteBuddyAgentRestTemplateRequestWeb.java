@@ -4,6 +4,7 @@ import com.github.f4b6a3.uuid.UuidCreator;
 import io.bitdive.parent.trasirovka.agent.utils.ContextManager;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import io.bitdive.parent.trasirovka.agent.utils.ReflectionUtils;
+import io.bitdive.parent.trasirovka.agent.utils.RestUtils;
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.implementation.MethodDelegation;
 import net.bytebuddy.implementation.bind.annotation.Origin;
@@ -15,6 +16,7 @@ import net.bytebuddy.matcher.ElementMatchers;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.charset.Charset;
@@ -24,9 +26,10 @@ import java.util.concurrent.Callable;
 
 import static io.bitdive.parent.message_producer.MessageService.sendMessageRequestUrl;
 import static io.bitdive.parent.trasirovka.agent.utils.DataUtils.getaNullThrowable;
+import static io.bitdive.parent.trasirovka.agent.utils.RestUtils.normalizeResponseBodyBytes;
 
 public class ByteBuddyAgentRestTemplateRequestWeb {
-    public static void init() {
+    public static void init(Instrumentation instrumentation) {
         try {
             Class<?> clientHttpRequestClass = Class.forName("org.springframework.http.client.ClientHttpRequest");
 
@@ -35,7 +38,7 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
                     .transform((builder, typeDescription, classLoader, module, dd) ->
                             builder.method(ElementMatchers.named("execute"))
                                     .intercept(MethodDelegation.to(ResponseWeRestTemplateInterceptor.class))
-                    ).installOnByteBuddyAgent();
+                    ).installOn(instrumentation);
         } catch (Exception e) {
             if (LoggerStatusContent.isErrorsOrDebug())
                 System.err.println("Not found class org.springframework.http.client.ClientHttpRequest in ClassLoader.");
@@ -55,7 +58,7 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
             String url = null;
             String httpMethod = null;
             Object headers = null;
-            Object body = null;
+            String body = null;
 
             String responseStatus = null;
             Object responseHeaders = null;
@@ -89,12 +92,37 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
                     } catch (Exception e) {
                         getBodyMethod = request.getClass().getDeclaredMethod("getBody");
                     }
+
+                    Object bodyObjectVal = null;
                     try {
                         getBodyMethod.setAccessible(true);
-                        body = Optional.ofNullable(getBodyMethod.invoke(request)).map(Object::toString).orElse("");
+                        bodyObjectVal = getBodyMethod.invoke(request);
                     } catch (Exception e) {
+                        try {
+                            Field fieldBody = request.getClass().getSuperclass().getDeclaredField("body");
+                            fieldBody.setAccessible(true);
+                            bodyObjectVal = fieldBody.get(request);
+                        } catch (Exception ex) {
+                            try {
+                                Field fieldBody = request.getClass().getSuperclass().getField("body");
+                                fieldBody.setAccessible(true);
+                                bodyObjectVal = fieldBody.get(request);
+                            } catch (Exception exc) {
+                            }
 
+
+                        }
+                        try {
+                            Field f = bodyObjectVal.getClass().getDeclaredField("val$t");
+                            f.setAccessible(true);
+                            bodyObjectVal = f.get(bodyObjectVal);
+                        } catch (Exception exc) {
+
+                        }
                     }
+
+                    body = Optional.ofNullable(bodyObjectVal).map(RestUtils::normalizeRequestBody).orElse("");
+
                     Method addHeaderMethod = headers.getClass().getMethod("add", String.class, String.class);
                     addHeaderMethod.invoke(headers, "x-BitDiv-custom-span-id", ContextManager.getSpanId());
                     addHeaderMethod.invoke(headers, "x-BitDiv-custom-parent-message-id", ContextManager.getMessageIdQueueNew());
@@ -145,7 +173,8 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
                             if (responseCharset == null) {
                                 responseCharset = Charset.defaultCharset();
                             }
-                            responseBody = new String(responseBodyBytes, responseCharset);
+                            responseBody = normalizeResponseBodyBytes(responseBodyBytes, responseHeaders, responseCharset);
+
 
                         }
                     } catch (Exception e) {
@@ -168,7 +197,7 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
                             url,
                             httpMethod,
                             ReflectionUtils.objectToString(headers),
-                            ReflectionUtils.objectToString(body),
+                            body,
                             responseStatus,
                             ReflectionUtils.objectToString(responseHeaders),
                             responseBody,
@@ -182,63 +211,67 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
             return retVal;
         }
 
-        // Helper method to read InputStream into byte array
-        private static byte[] readAllBytes(InputStream inputStream) throws IOException {
-            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-            int nRead;
-            byte[] data = new byte[16384];
-            while ((nRead = inputStream.read(data, 0, data.length)) != -1) {
-                buffer.write(data, 0, nRead);
-            }
-            buffer.flush();
-            return buffer.toByteArray();
-        }
 
-        // Helper method to get the response charset from headers
-        private static Charset getResponseCharset(Object headers) {
+    }
+
+
+    // Helper method to read InputStream into byte array
+    private static byte[] readAllBytes(InputStream inputStream) throws IOException {
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        int nRead;
+        byte[] data = new byte[16384];
+        while ((nRead = inputStream.read(data, 0, data.length)) != -1) {
+            buffer.write(data, 0, nRead);
+        }
+        buffer.flush();
+        return buffer.toByteArray();
+    }
+
+    // Helper method to get the response charset from headers
+    private static Charset getResponseCharset(Object headers) {
+        try {
+            Method getContentTypeMethod = headers.getClass().getMethod("getContentType");
+            getContentTypeMethod.setAccessible(true);
+            Object mediaType = getContentTypeMethod.invoke(headers);
+            if (mediaType != null) {
+                Method getCharsetMethod = mediaType.getClass().getMethod("getCharset");
+                getCharsetMethod.setAccessible(true);
+                Charset charset = (Charset) getCharsetMethod.invoke(mediaType);
+                return charset;
+            }
+        } catch (Exception e) {
+            // Ignore and use default charset
+        }
+        return null;
+    }
+
+    // Helper method to replace the response body's InputStream
+    private static void replaceResponseBodyInputStream(Object response, InputStream newInputStream) throws Exception {
+        // The response object is an instance of ClientHttpResponse
+        // Depending on the implementation, we need to set the InputStream
+
+        // For example, if it's a SimpleClientHttpResponse
+        Field bodyField = null;
+        Class<?> responseClass = response.getClass();
+        while (responseClass != null) {
             try {
-                Method getContentTypeMethod = headers.getClass().getMethod("getContentType");
-                getContentTypeMethod.setAccessible(true);
-                Object mediaType = getContentTypeMethod.invoke(headers);
-                if (mediaType != null) {
-                    Method getCharsetMethod = mediaType.getClass().getMethod("getCharset");
-                    getCharsetMethod.setAccessible(true);
-                    Charset charset = (Charset) getCharsetMethod.invoke(mediaType);
-                    return charset;
-                }
-            } catch (Exception e) {
-                // Ignore and use default charset
+                bodyField = responseClass.getDeclaredField("responseStream");
+                bodyField.setAccessible(true);
+                break;
+            } catch (NoSuchFieldException e) {
+                responseClass = responseClass.getSuperclass();
             }
-            return null;
         }
 
-        // Helper method to replace the response body's InputStream
-        private static void replaceResponseBodyInputStream(Object response, InputStream newInputStream) throws Exception {
-            // The response object is an instance of ClientHttpResponse
-            // Depending on the implementation, we need to set the InputStream
-
-            // For example, if it's a SimpleClientHttpResponse
-            Field bodyField = null;
-            Class<?> responseClass = response.getClass();
-            while (responseClass != null) {
-                try {
-                    bodyField = responseClass.getDeclaredField("responseStream");
-                    bodyField.setAccessible(true);
-                    break;
-                } catch (NoSuchFieldException e) {
-                    responseClass = responseClass.getSuperclass();
-                }
-            }
-
-            if (bodyField != null) {
-                bodyField.set(response, newInputStream);
-            } else {
-                // If we cannot find the 'body' field, we may need to wrap the response
-                // Alternatively, you can throw an exception or log an error
-                if (LoggerStatusContent.isErrorsOrDebug()) {
-                    System.err.println("Unable to replace response body InputStream.");
-                }
+        if (bodyField != null) {
+            bodyField.set(response, newInputStream);
+        } else {
+            // If we cannot find the 'body' field, we may need to wrap the response
+            // Alternatively, you can throw an exception or log an error
+            if (LoggerStatusContent.isErrorsOrDebug()) {
+                System.err.println("Unable to replace response body InputStream.");
             }
         }
     }
+
 }

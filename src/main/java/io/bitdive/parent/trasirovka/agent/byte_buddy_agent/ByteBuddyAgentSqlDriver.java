@@ -5,6 +5,7 @@ import net.bytebuddy.implementation.MethodDelegation;
 import net.bytebuddy.implementation.bind.annotation.*;
 import net.bytebuddy.matcher.ElementMatchers;
 
+import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Method;
 import java.sql.Driver;
 import java.util.concurrent.Callable;
@@ -13,7 +14,7 @@ import static io.bitdive.parent.message_producer.MessageService.sendMessageCriti
 
 public class ByteBuddyAgentSqlDriver {
 
-    public static void init() {
+    public static void init(Instrumentation instrumentation) {
         new AgentBuilder.Default()
                 .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
                 .type(ElementMatchers.isSubTypeOf(Driver.class))
@@ -21,7 +22,7 @@ public class ByteBuddyAgentSqlDriver {
                         builder.method(ElementMatchers.named("connect"))
                                 .intercept(MethodDelegation.to(DriverInterceptor.class))
                 )
-                .installOnByteBuddyAgent();
+                .installOn(instrumentation);
     }
 
     public static class DriverInterceptor {

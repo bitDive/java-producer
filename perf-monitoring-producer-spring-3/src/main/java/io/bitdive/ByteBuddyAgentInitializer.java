@@ -1,13 +1,11 @@
 package io.bitdive;
 
 
-import io.bitdive.parent.jvm_metrics.GenerateJvmMetrics;
+import io.bitdive.parent.init.MonitoringStarting;
 import io.bitdive.parent.message_producer.LibraryLoggerConfig;
 import io.bitdive.parent.parserConfig.YamlParserConfig;
-import io.bitdive.parent.trasirovka.agent.byte_buddy_agent.*;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import io.bitdive.parent.utils.LibraryVersionBitDive;
-import net.bytebuddy.agent.ByteBuddyAgent;
 import org.springframework.context.ApplicationContextInitializer;
 import org.springframework.context.ConfigurableApplicationContext;
 
@@ -65,25 +63,9 @@ public class ByteBuddyAgentInitializer implements ApplicationContextInitializer<
                 );
             }
 
+
             LibraryLoggerConfig.init();
-            ByteBuddyAgent.install();
-            ByteBuddyAgentBasic.init();
-            ByteBuddyAgentThread.init();
-            ByteBuddyAgentThreadCreator.init();
-            ByteBuddySimpleClientHttpResponse.init();
-            ByteBuddyAgentRestTemplateRequestWeb.init();
-            ByteBuddyAgentResponseWeb.init();
-            ByteBuddyAgentSql.init();
-            ByteBuddyAgentCatalinaResponse.init();
-            ByteBuddyAgentFeignRequestWeb.init();
-            ByteBuddySimpleClientHttpResponse.init();
-            ByteBuddyAgentSqlDriver.init();
-            ByteBuddyAgentKafkaSend.init();
-            ByteBuddyAgentKafkaInterceptor.init();
-            KafkaConsumerAgent.init();
-
-            GenerateJvmMetrics.init();
-
+            MonitoringStarting.init();
             initializeAgent = true;
         } catch (Exception e) {
             if (LoggerStatusContent.isErrorsOrDebug()) {

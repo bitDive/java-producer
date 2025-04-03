@@ -7,10 +7,11 @@ import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.matcher.ElementMatchers;
 
+import java.lang.instrument.Instrumentation;
 import java.util.concurrent.Callable;
 
 public class ByteBuddyAgentThread {
-    public static void init() {
+    public static void init(Instrumentation instrumentation) {
         new AgentBuilder.Default()
                 .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
                 .with(AgentBuilder.InitializationStrategy.NoOp.INSTANCE)
@@ -18,7 +19,7 @@ public class ByteBuddyAgentThread {
                 .transform((builder, typeDescription, classLoader, module, sdf) ->
                         builder.method(ElementMatchers.named("callAsync").and(ElementMatchers.takesArguments(2)))
                                 .intercept(Advice.to(ThreadInterceptor.class))
-                ).installOnByteBuddyAgent();
+                ).installOn(instrumentation);
     }
 
     public static class ThreadInterceptor {

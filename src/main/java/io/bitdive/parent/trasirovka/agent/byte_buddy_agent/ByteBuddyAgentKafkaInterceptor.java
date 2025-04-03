@@ -10,6 +10,7 @@ import net.bytebuddy.implementation.bind.annotation.RuntimeType;
 import net.bytebuddy.implementation.bind.annotation.SuperCall;
 import net.bytebuddy.matcher.ElementMatchers;
 
+import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.concurrent.Callable;
@@ -21,7 +22,7 @@ public class ByteBuddyAgentKafkaInterceptor {
 
     private static final Map<Object, String> NC_BOOTSTRAP_MAP = new ConcurrentHashMap<>();
 
-    public static void init() {
+    public static void init(Instrumentation instrumentation) {
         new AgentBuilder.Default()
                 .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
                 .type(ElementMatchers.named("org.apache.kafka.clients.NetworkClient"))
@@ -30,7 +31,7 @@ public class ByteBuddyAgentKafkaInterceptor {
                                 .method(ElementMatchers.named("processDisconnection"))
                                 .intercept(MethodDelegation.to(ProcessDisconnectionInterceptor.class))
                 )
-                .installOnByteBuddyAgent();
+                .installOn(instrumentation);
     }
 
     public static class ProcessDisconnectionInterceptor {

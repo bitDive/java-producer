@@ -14,11 +14,6 @@ import java.util.Optional;
 
 
 public class LibraryLoggerConfig {
-    static {
-        // Устанавливаем системное свойство при загрузке класса
-        System.setProperty("Log4jContextSelector",
-                "org.apache.logging.log4j.core.async.AsyncLoggerContextSelector");
-    }
 
     private static LoggerContext loggerContext;
 
@@ -38,7 +33,7 @@ public class LibraryLoggerConfig {
 
 
         LayoutComponentBuilder layoutBuilder = builder.newLayout("PatternLayout")
-                .addAttribute("pattern", "%m --- %n");
+                .addAttribute("pattern", "%m");
         rollingFileAppender.add(layoutBuilder);
 
         ComponentBuilder<?> policies = builder.newComponent("Policies")

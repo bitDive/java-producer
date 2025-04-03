@@ -8,23 +8,28 @@ import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.matcher.ElementMatchers;
 
+import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Method;
+import java.sql.CallableStatement;
 import java.sql.Statement;
 import java.time.OffsetDateTime;
 
 import static io.bitdive.parent.message_producer.MessageService.sendMessageSQLEnd;
 import static io.bitdive.parent.message_producer.MessageService.sendMessageSQLStart;
 import static io.bitdive.parent.trasirovka.agent.utils.DataUtils.getaNullThrowable;
+import static io.bitdive.parent.trasirovka.agent.utils.SQLUtils.getCallableStatement;
 
 public class ByteBuddyAgentSql {
 
-    public static void init() {
+    public static void init(Instrumentation instrumentation) {
         new AgentBuilder.Default()
                 .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
-                .type(target ->
-                        target.getSuperClass() != null &&
-                                target.getSuperClass().getInterfaces().stream().noneMatch(i -> i.represents(Statement.class)) &&
-                                target.getInterfaces().stream().anyMatch(i -> i.represents(Statement.class))
+                .type(typeDescription ->
+                        typeDescription.isAssignableTo(Statement.class) &&
+                                !typeDescription.getName().contains("Proxy") &&
+                                !typeDescription.getName().contains("Delegating") &&
+                                !typeDescription.getName().startsWith("com.zaxxer.hikari") &&
+                                !typeDescription.getName().contains("springframework")
                 )
                 .transform((builder, typeDescription, classLoader, module, dd) ->
                         builder.visit(Advice.to(SqlAdvice.class)
@@ -36,7 +41,7 @@ public class ByteBuddyAgentSql {
 
                         )
                 )
-                .installOnByteBuddyAgent();
+                .installOn(instrumentation);
     }
 
     public static class SqlAdvice {
@@ -51,7 +56,11 @@ public class ByteBuddyAgentSql {
             String sqlFromStatement = "";
 
             if (args.length == 1) {
-                sqlFromStatement = args[0].toString();
+                if (args[0] instanceof CallableStatement) {
+                    sqlFromStatement = getCallableStatement(args[0]);
+                } else {
+                    sqlFromStatement = args[0].toString();
+                }
             } else {
                 sqlFromStatement = SQLUtils.getSQLFromStatement(stmt);
             }

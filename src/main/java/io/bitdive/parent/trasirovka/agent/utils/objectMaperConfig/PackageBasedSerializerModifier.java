@@ -41,6 +41,7 @@ public class PackageBasedSerializerModifier extends BeanSerializerModifier {
                 };
             }
         }
+
         return serializer;
     }
 }

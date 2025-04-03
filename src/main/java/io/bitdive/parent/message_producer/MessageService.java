@@ -43,6 +43,8 @@ public class MessageService {
             }
         }
 
+        sb.append("~@~");
+
         return sb.toString();
     }
 
@@ -66,7 +68,7 @@ public class MessageService {
                     String value = pair.substring(idx + 1);
 
                     for (String litresMask : SENSITIVE_KEYWORDS) {
-                        if (litresMask.contains(key.toLowerCase())) {
+                        if (key.toLowerCase().contains(litresMask) || litresMask.toLowerCase().contains(key)) {
                             value = URLEncoder.encode("*****", StandardCharsets.UTF_8.name());
                             break;
                         }
@@ -101,8 +103,7 @@ public class MessageService {
                                         String className, String methodName, String traceId, String spanId,
                                         OffsetDateTime dateStart, String parentMessage, boolean inPointFlag,
                                         String args, String operationType, String urlRequest, String serviceCallId) {
-        sendMessage(
-                buildMessage(
+        sendMessage(buildMessage(
                 MessageTypeEnum.STAR.name(),
                 YamlParserConfig.getProfilingConfig().getApplication().getModuleName(),
                 YamlParserConfig.getProfilingConfig().getApplication().getServiceName(),
@@ -167,25 +168,25 @@ public class MessageService {
                                              String statusCode, String responseHeaders, String responseBody,
                                              String errorCall, String parentMessageId, String serviceCallId
     ) {
-        sendMessage(//buildMessage(
-                MessageTypeEnum.WEB_REQUEST.name() + "," +
-                        messageId + "," +
-                        traceId + "," +
-                        spanId + "," +
-                        dateStart.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME) + "," +
-                        dateEnd.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME) + "," +
-                        sanitizeUrl(URL) + "," +
-                        method + "," +
-                        headers + "," +
-                        body + "," +
-                        statusCode + "," +
-                        responseHeaders + "," +
-                        responseBody + "," +
-                        errorCall + "," +
-                        parentMessageId + "," +
-                        YamlParserConfig.getLibraryVersion() + "," +
+        sendMessage(buildMessage(
+                MessageTypeEnum.WEB_REQUEST.name(),
+                messageId,
+                traceId,
+                spanId,
+                dateStart.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                dateEnd.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                sanitizeUrl(URL),
+                method,
+                headers,
+                body,
+                statusCode,
+                responseHeaders,
+                responseBody,
+                errorCall,
+                parentMessageId,
+                YamlParserConfig.getLibraryVersion(),
                 serviceCallId
-        );
+        ));
     }
 
     public static void sendMessageKafkaSend(String messageId, String spanId, String traceId,

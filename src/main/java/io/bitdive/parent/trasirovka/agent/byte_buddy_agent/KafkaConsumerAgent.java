@@ -5,11 +5,12 @@ import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.matcher.ElementMatchers;
 
+import java.lang.instrument.Instrumentation;
 import java.util.Map;
 import java.util.Optional;
 
 public class KafkaConsumerAgent {
-    public static void init() {
+    public static void init(Instrumentation instrumentation) {
         new AgentBuilder.Default()
                 .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
                 .type(ElementMatchers.named("org.apache.kafka.clients.consumer.KafkaConsumer"))
@@ -20,7 +21,7 @@ public class KafkaConsumerAgent {
                                 )
                                 .intercept(Advice.to(KafkaConsumerConstructorAdvice.class))
                 )
-                .installOnByteBuddyAgent();
+                .installOn(instrumentation);
     }
 
     public static class KafkaConsumerConstructorAdvice {

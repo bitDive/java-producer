@@ -6,16 +6,17 @@ import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.matcher.ElementMatchers;
 
+import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Method;
 
 public class ByteBuddyAgentThreadCreator {
-    public static void init()  {
+    public static void init(Instrumentation instrumentation) {
         new AgentBuilder.Default()
                 .type(ElementMatchers.nameStartsWith("org.springframework.util.CustomizableThreadCreator"))  // Укажите пакет ваших классов
                 .transform((builder, typeDescription, classLoader, module, sd) ->
                         builder.method(ElementMatchers.named("createThread"))  // Выбор всех методов для обертки
                                 .intercept(Advice.to(ThreadCreatorInterceptor.class))
-                ).installOnByteBuddyAgent();
+                ).installOn(instrumentation);
     }
 
     public static class ThreadCreatorInterceptor {

@@ -6,22 +6,21 @@ import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.matcher.ElementMatchers;
 
+import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Method;
-import java.util.Arrays;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 import static io.bitdive.parent.message_producer.MessageService.sendMessageWebResponse;
 
 public class ByteBuddyAgentCatalinaResponse {
-    public static void init() {
+    public static void init(Instrumentation instrumentation) {
         new AgentBuilder.Default()
                 .type(ElementMatchers.named("org.apache.catalina.connector.Request"))
                 .transform((builder, typeDescription, classLoader, module, dd) ->
                         builder.visit(Advice.to(CatalinaResponseInterceptor.class)
                                 .on(ElementMatchers.named("finishRequest")))
                 )
-                .installOnByteBuddyAgent();
+                .installOn(instrumentation);
     }
 
     public static class CatalinaResponseInterceptor {
