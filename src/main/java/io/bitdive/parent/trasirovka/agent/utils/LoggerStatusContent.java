@@ -10,7 +10,16 @@ import java.util.Optional;
 
 public class LoggerStatusContent {
 
+    public static boolean getEnabledProfile() {
+        return
+                Optional.ofNullable(YamlParserConfig.getProfilingConfig())
+                        .map(ProfilingConfig::getMonitoring)
+                        .map(monitoringConfig -> !monitoringConfig.isEnabled())
+                        .orElse(true);
+    }
+
     public static boolean isErrorsOrDebug(){
+        if (getEnabledProfile()) return false;
         return Arrays.asList(LogLevelEnum.ERRORS, LogLevelEnum.DEBUG).contains(
                 Optional.ofNullable(YamlParserConfig.getProfilingConfig())
                         .map(ProfilingConfig::getMonitoring)
@@ -20,13 +29,16 @@ public class LoggerStatusContent {
     }
 
     public static boolean isErrors (){
+        if (getEnabledProfile()) return false;
         return YamlParserConfig.getProfilingConfig().getMonitoring().getLogLevel()==LogLevelEnum.ERRORS;
     }
 
     public static boolean isInfo (){
+        if (getEnabledProfile()) return false;
         return YamlParserConfig.getProfilingConfig().getMonitoring().getLogLevel()==LogLevelEnum.INFO;
     }
     public static boolean isDebug (){
+        if (getEnabledProfile()) return false;
         return YamlParserConfig.getProfilingConfig().getMonitoring().getLogLevel()==LogLevelEnum.DEBUG;
     }
 }

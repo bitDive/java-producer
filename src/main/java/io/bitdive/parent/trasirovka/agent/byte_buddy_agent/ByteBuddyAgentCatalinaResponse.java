@@ -1,8 +1,10 @@
 package io.bitdive.parent.trasirovka.agent.byte_buddy_agent;
 
+import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.ContextManager;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import net.bytebuddy.agent.builder.AgentBuilder;
+import net.bytebuddy.agent.builder.ResettableClassFileTransformer;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.matcher.ElementMatchers;
 
@@ -13,8 +15,8 @@ import java.util.Optional;
 import static io.bitdive.parent.message_producer.MessageService.sendMessageWebResponse;
 
 public class ByteBuddyAgentCatalinaResponse {
-    public static void init(Instrumentation instrumentation) {
-        new AgentBuilder.Default()
+    public static ResettableClassFileTransformer init(Instrumentation instrumentation) {
+        return new AgentBuilder.Default()
                 .type(ElementMatchers.named("org.apache.catalina.connector.Request"))
                 .transform((builder, typeDescription, classLoader, module, dd) ->
                         builder.visit(Advice.to(CatalinaResponseInterceptor.class)
@@ -27,7 +29,7 @@ public class ByteBuddyAgentCatalinaResponse {
 
         @Advice.OnMethodEnter
         public static void onEnter(@Advice.This Object responseObj) {
-
+            if (LoggerStatusContent.getEnabledProfile()) return;
             try {
                 if (Optional.of(ContextManager.getUrlStart()).orElse("").toLowerCase().contains("/actuator/")) return;
 

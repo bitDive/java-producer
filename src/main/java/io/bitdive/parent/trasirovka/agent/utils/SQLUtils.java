@@ -1,6 +1,6 @@
 package io.bitdive.parent.trasirovka.agent.utils;
 
-import org.springframework.util.ObjectUtils;
+import org.apache.commons.lang3.ObjectUtils;
 
 import java.sql.CallableStatement;
 import java.sql.Connection;

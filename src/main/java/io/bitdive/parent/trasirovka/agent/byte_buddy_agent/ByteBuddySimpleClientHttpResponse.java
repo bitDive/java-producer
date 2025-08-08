@@ -2,6 +2,7 @@ package io.bitdive.parent.trasirovka.agent.byte_buddy_agent;
 
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import net.bytebuddy.agent.builder.AgentBuilder;
+import net.bytebuddy.agent.builder.ResettableClassFileTransformer;
 import net.bytebuddy.description.modifier.Visibility;
 import net.bytebuddy.implementation.MethodDelegation;
 import net.bytebuddy.implementation.bind.annotation.RuntimeType;
@@ -18,10 +19,10 @@ import java.lang.reflect.Field;
 import java.util.concurrent.Callable;
 
 public class ByteBuddySimpleClientHttpResponse {
-    public static void init(Instrumentation instrumentation) {
+    public static ResettableClassFileTransformer init(Instrumentation instrumentation) {
         try {
             Class<?> clientClass = Class.forName("org.springframework.http.client.ClientHttpResponse");
-            new AgentBuilder.Default()
+            return new AgentBuilder.Default()
                     .type(ElementMatchers.nameContains("org.springframework").and(ElementMatchers.isSubTypeOf(clientClass)))
                     .transform((builder, typeDescription, classLoader, module, dd) ->
                             builder.defineField("cachedBody", byte[].class, Visibility.PRIVATE)
@@ -32,15 +33,14 @@ public class ByteBuddySimpleClientHttpResponse {
             if (LoggerStatusContent.isErrorsOrDebug())
                 System.err.println("Not found class feign.Client in ClassLoader.");
         }
+        return null;
     }
 
 
     public static class GetBodyInterceptor {
 
         @RuntimeType
-        public static InputStream intercept(
-                @SuperCall Callable<InputStream> zuper,
-                @This Object obj) throws Exception {
+        public static InputStream intercept(@SuperCall Callable<InputStream> zuper, @This Object obj) throws Exception {
 
             Field cachedBodyField = obj.getClass().getDeclaredField("cachedBody");
             cachedBodyField.setAccessible(true);

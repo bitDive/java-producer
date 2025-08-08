@@ -1,10 +1,12 @@
 package io.bitdive.parent.trasirovka.agent.byte_buddy_agent;
 
 import com.github.f4b6a3.uuid.UuidCreator;
+import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.ContextManager;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import io.bitdive.parent.trasirovka.agent.utils.ReflectionUtils;
 import net.bytebuddy.agent.builder.AgentBuilder;
+import net.bytebuddy.agent.builder.ResettableClassFileTransformer;
 import net.bytebuddy.implementation.MethodDelegation;
 import net.bytebuddy.implementation.bind.annotation.*;
 import net.bytebuddy.matcher.ElementMatchers;
@@ -27,10 +29,10 @@ import static io.bitdive.parent.trasirovka.agent.utils.DataUtils.getaNullThrowab
 import static io.bitdive.parent.trasirovka.agent.utils.RestUtils.normalizeResponseBodyBytes;
 
 public class ByteBuddyAgentFeignRequestWeb {
-    public static void init(Instrumentation instrumentation) {
+    public static ResettableClassFileTransformer init(Instrumentation instrumentation) {
         try {
             Class<?> clientClass = Class.forName("feign.Client");
-            new AgentBuilder.Default()
+            return new AgentBuilder.Default()
                     .type(ElementMatchers.isSubTypeOf(clientClass)
                             .and(ElementMatchers.not(ElementMatchers.nameContains("loadbalancer")))
                     )
@@ -42,6 +44,7 @@ public class ByteBuddyAgentFeignRequestWeb {
             if (LoggerStatusContent.isErrorsOrDebug())
                 System.err.println("Not found class feign.Client in ClassLoader.");
         }
+        return null;
     }
 
     public static class FeignClientInterceptor {
@@ -51,6 +54,9 @@ public class ByteBuddyAgentFeignRequestWeb {
                                        @SuperMethod Method superMethod,
                                        @This Object proxy,
                                        @AllArguments Object args[]) throws Throwable {
+
+            if (LoggerStatusContent.getEnabledProfile()) return zuper.call();
+
             if (ContextManager.getMessageIdQueueNew().isEmpty()) return zuper.call();
             Object retVal = null;
             Throwable thrown = null;

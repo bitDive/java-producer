@@ -11,6 +11,7 @@ import java.security.PrivateKey;
 import java.security.Signature;
 import java.util.Base64;
 
+
 public class LocalCryptoService {
 
     private static final String ENCRYPTION_ALGORITHM = "AES/CBC/PKCS5Padding";
@@ -35,6 +36,9 @@ public class LocalCryptoService {
     }
 
     public static Pair<Integer, String> encrypt(String plainText) throws Exception {
+        if (pairSecretKey.getVal() == null) {
+            Thread.sleep(1000);
+        }
         Cipher cipher = Cipher.getInstance(ENCRYPTION_ALGORITHM);
         byte[] iv = new byte[IV_LENGTH];
         secureRandom.nextBytes(iv);
@@ -51,6 +55,9 @@ public class LocalCryptoService {
     }
 
     public static Pair<Integer, String> sign(String encryptedData) throws Exception {
+        if (pairPrivateKey.getVal() == null) {
+            Thread.sleep(1000);
+        }
         Signature signature = Signature.getInstance("SHA256withECDSA");
         signature.initSign(pairPrivateKey.getVal());
         signature.update(encryptedData.getBytes(StandardCharsets.UTF_8));

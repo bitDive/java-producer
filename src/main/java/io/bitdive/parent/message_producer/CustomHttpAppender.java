@@ -21,9 +21,7 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.zip.GZIPInputStream;
 
@@ -41,6 +39,10 @@ public class CustomHttpAppender extends AbstractAppender {
     private final AtomicBoolean isSending;
     private final Proxy proxy;
     private final Integer fileStorageTime;
+
+    int concurrentWorkers = 5;   // сколько задач реально работает одновременно
+    int queueCapacity = 10;  // сколько задач можем держать «в ожидании»
+    long keepAliveSeconds = 0L;  // не даём лишним потокам жить дольше необходимости
 
     protected CustomHttpAppender(String name, Filter filter, Layout<? extends Serializable> layout,
                                  boolean ignoreExceptions, String url, Proxy proxy, long scanIntervalSeconds, Configuration configuration, String filePath, Integer fileStorageTime) {
@@ -98,15 +100,51 @@ public class CustomHttpAppender extends AbstractAppender {
             while (gis.read(buffer) != -1) {
             }
             return true;
+          /*  return Files.isRegularFile(file)
+                    && Files.size(file) > 0;*/
         } catch (IOException e) {
             if (LoggerStatusContent.isDebug()) {
                 System.out.println("Integrity check failed for file " + file + ": " + e.getMessage());
             }
             return false;
         }
+
+    }
+
+    ExecutorService pool = new ThreadPoolExecutor(
+            concurrentWorkers,            // corePoolSize  – постоянно живущие
+            concurrentWorkers,            // maximumPoolSize – верхний предел (тоже 5)
+            keepAliveSeconds, TimeUnit.SECONDS,
+            new ArrayBlockingQueue<>(queueCapacity),
+            new ThreadPoolExecutor.CallerRunsPolicy()   // fallback, если очередь забита
+    );
+
+    Runnable makeTask(Path file, Proxy proxy, long fileStorageTime) {
+        return () -> {                           // лямбда превращается в Runnable
+            try {
+                if (isGzipValid(file)) {
+                    boolean ok = sendFile(file.toFile(), proxy, "uploadFileData");
+                    if (ok) {
+                        Files.deleteIfExists(file);
+                        return;
+                    }
+                }
+
+                // сюда попадаем, если архив битый *или* отправка не удалась
+                BasicFileAttributes attrs = Files.readAttributes(file, BasicFileAttributes.class);
+                long ageMinutes = (System.currentTimeMillis() - attrs.creationTime().toMillis()) / 60_000;
+                if (ageMinutes > fileStorageTime) {
+                    Files.deleteIfExists(file);
+                }
+            } catch (Exception ex) {
+                // решайте, что делать: логировать, пробовать ещё раз и т.д.
+                if (LoggerStatusContent.isDebug()) System.out.println("error scan file " + ex.getMessage());
+            }
+        };
     }
 
     private void scanAndSendFiles() {
+        if (LoggerStatusContent.getEnabledProfile()) return;
         if (isSending.compareAndSet(false, true)) {
             try {
                 Path dir = Paths.get(filePath);
@@ -119,20 +157,7 @@ public class CustomHttpAppender extends AbstractAppender {
                 }
 
                 for (Path file : filesToSend) {
-                    if (isGzipValid(file)) {
-                        boolean success = sendFile(file.toFile(), proxy, "uploadFileData");
-                        if (success) {
-                            Files.delete(file);
-                        } else {
-                            BasicFileAttributes attrs = Files.readAttributes(file, BasicFileAttributes.class);
-                            FileTime creationTime = attrs.creationTime();
-                            long ageInMinutes = (System.currentTimeMillis() - creationTime.toMillis()) / (60 * 1000);
-
-                            if (ageInMinutes > fileStorageTime) {
-                                Files.delete(file);
-                            }
-                        }
-                    }
+                    pool.submit(makeTask(file, proxy, fileStorageTime));
                 }
 
             } catch (Exception e) {
@@ -147,10 +172,19 @@ public class CustomHttpAppender extends AbstractAppender {
     @Override
     public void stop() {
         super.stop();
+        if (scheduler == null) return;
+        scheduler.shutdown();
         try {
-            scheduler.shutdown();
-            scheduler.awaitTermination(5, TimeUnit.SECONDS);
+            if (!scheduler.awaitTermination(40, TimeUnit.SECONDS)) {
+                scheduler.shutdownNow();
+            }
+            if (LoggerStatusContent.isDebug())
+                System.out.println("Metric logging has stopped.");
         } catch (InterruptedException e) {
+            scheduler.shutdownNow();
+            Thread.currentThread().interrupt();
+            if (LoggerStatusContent.isErrorsOrDebug())
+                System.err.println("Metrics logging was interrupted.");
         }
     }
 }

@@ -1,0 +1,34 @@
+{
+  "properties": [
+    {
+      "name": "bitdive.monitoring.moduleName",
+      "type": "java.lang.String",
+      "description": "name module",
+      "sourceType": "com.your.package.MonitoringProperties"
+    },
+    {
+      "name": "bitdive.monitoring.serviceName",
+      "type": "java.lang.String",
+      "description": "name service",
+      "sourceType": "com.your.package.MonitoringProperties"
+    },
+    {
+      "name": "bitdive.monitoring.packedScanner",
+      "type": "java.util.List<java.lang.String>",
+      "description": "packed for scanner",
+      "sourceType": "com.your.package.MonitoringProperties"
+    },
+    {
+      "name": "bitdive.monitoring.server-url",
+      "type": "java.lang.String",
+      "description": "URL server",
+      "sourceType": "com.your.package.MonitoringProperties"
+    },
+    {
+      "name": "bitdive.monitoring.token",
+      "type": "java.lang.String",
+      "description": "token for authorization",
+      "sourceType": "com.your.package.MonitoringProperties"
+    }
+  ]
+}

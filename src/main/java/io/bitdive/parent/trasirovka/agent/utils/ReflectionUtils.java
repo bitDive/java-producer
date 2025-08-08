@@ -9,16 +9,16 @@ import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.fasterxml.jackson.module.afterburner.AfterburnerModule;
 import io.bitdive.parent.parserConfig.YamlParserConfig;
-import io.bitdive.parent.trasirovka.agent.utils.objectMaperConfig.ByteArrayToPlaceholderModule;
-import io.bitdive.parent.trasirovka.agent.utils.objectMaperConfig.CollectionSizeLimiter;
-import io.bitdive.parent.trasirovka.agent.utils.objectMaperConfig.MaskingFilter;
-import io.bitdive.parent.trasirovka.agent.utils.objectMaperConfig.PackageBasedSerializerModifier;
+import io.bitdive.parent.trasirovka.agent.utils.objectMaperConfig.*;
 import io.bitdive.parent.utils.hibernateConfig.HibernateModuleLoader;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Stream;
 
 public class ReflectionUtils {
 
@@ -53,8 +53,7 @@ public class ReflectionUtils {
         ignoreModule.setSerializerModifier(new PackageBasedSerializerModifier(EXCLUDED_PACKAGES));
         mapper.registerModule(ignoreModule);
 
-        mapper.registerModule(new ByteArrayToPlaceholderModule());
-
+        mapper.registerModule(new FlowDataToPlaceholderModule());
 
         mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         mapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
@@ -84,4 +83,88 @@ public class ReflectionUtils {
             return "[Error: " + e.getMessage() + "]";
         }
     }
+
+
+    /**
+     * Получить значение поля с именем fieldName у объекта target.
+     *
+     * @param target    объект, у которого читаем поле
+     * @param fieldName имя поля (может быть приватным, в суперклассах)
+     * @return значение поля
+     * @throws Exception если поле не найдено или доступ к нему невозможен
+     */
+    public static Object getFieldValue(Object target, String fieldName) throws Exception {
+        if (target == null) {
+            throw new IllegalArgumentException("Target object is null");
+        }
+        Field field = findField(target.getClass(), fieldName);
+        field.setAccessible(true);
+        return field.get(target);
+    }
+
+    /**
+     * Вызвать метод без аргументов.
+     *
+     * @param target     объект, у которого вызываем метод
+     * @param methodName имя метода
+     * @return результат вызова
+     * @throws Exception если метод не найден или при вызове произошла ошибка
+     */
+    public static Object invokeMethod(Object target, String methodName) throws Exception {
+        return invokeMethod(target, methodName, new Class<?>[0], new Object[0]);
+    }
+
+    /**
+     * Вызвать метод с параметрами.
+     *
+     * @param target         объект, у которого вызываем метод
+     * @param methodName     имя метода
+     * @param parameterTypes массив типов параметров
+     * @param args           аргументы метода
+     * @return результат вызова
+     * @throws Exception если метод не найден или при вызове произошла ошибка
+     */
+    public static Object invokeMethod(Object target,
+                                      String methodName,
+                                      Class<?>[] parameterTypes,
+                                      Object... args) throws Exception {
+        if (target == null) {
+            throw new IllegalArgumentException("Target object is null");
+        }
+        Method method = findMethod(target.getClass(), methodName, parameterTypes);
+        method.setAccessible(true);
+        return method.invoke(target, args);
+    }
+
+    // ----- Вспомогательные методы поиска поля и метода в иерархии классов -----
+
+    private static Field findField(Class<?> clazz, String name) throws NoSuchFieldException {
+        Class<?> current = clazz;
+        while (current != null) {
+            try {
+                return current.getDeclaredField(name);
+            } catch (NoSuchFieldException e) {
+                current = current.getSuperclass();
+            }
+        }
+        throw new NoSuchFieldException("Field '" + name + "' not found in " + clazz);
+    }
+
+    private static Method findMethod(Class<?> clazz,
+                                     String name,
+                                     Class<?>[] parameterTypes) throws NoSuchMethodException {
+        Class<?> current = clazz;
+        while (current != null) {
+            try {
+                return current.getDeclaredMethod(name, parameterTypes);
+            } catch (NoSuchMethodException e) {
+                current = current.getSuperclass();
+            }
+        }
+        throw new NoSuchMethodException("Method '" + name + "' with parameters "
+                + java.util.Arrays.toString(parameterTypes)
+                + " not found in " + clazz);
+    }
+
+
 }

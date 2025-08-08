@@ -3,7 +3,7 @@ package io.bitdive.parent.parserConfig;
 import com.github.f4b6a3.uuid.UuidCreator;
 import lombok.Getter;
 import lombok.Setter;
-import org.springframework.util.ObjectUtils;
+import org.apache.commons.lang3.ObjectUtils;
 import org.yaml.snakeyaml.Yaml;
 
 import java.io.InputStream;
@@ -27,7 +27,7 @@ public class YamlParserConfig {
     private static ProfilingConfig profilingConfig;
 
 
-    public static void loadConfig() {
+    public static void loadConfig(ConfigForServiceDTO dto) {
         Yaml yaml = new Yaml();
 
         ProfilingConfig defaultConfig;
@@ -46,9 +46,11 @@ public class YamlParserConfig {
             if (overrideConfigStream != null) {
                 ProfilingConfig overrideConfig = yaml.loadAs(overrideConfigStream, ProfilingConfig.class);
                 finalConfig = mergeConfigs(defaultConfig, overrideConfig);
+            } else {
+                finalConfig = HttpsURLConnectionCustom.requestConfigForService(dto);
             }
         } catch (Exception e) {
-            throw new RuntimeException("Error of read file config-profiling.yml", e);
+            finalConfig = HttpsURLConnectionCustom.requestConfigForService(dto);
         }
 
         profilingConfig = finalConfig;
@@ -134,17 +136,14 @@ public class YamlParserConfig {
                             defaultVal.getSendFiles().getServerConsumer().setUrl(monitoringConfigOverride.getSendFiles().getServerConsumer().getUrl());
                         }
 
-                        if (monitoringConfigOverride.getSendFiles().getServerConsumer().getVault() != null &&
-                                monitoringConfigOverride.getSendFiles().getServerConsumer().getVault().getUrl() != null &&
-                                monitoringConfigOverride.getSendFiles().getServerConsumer().getVault().getLogin() != null &&
-                                monitoringConfigOverride.getSendFiles().getServerConsumer().getVault().getPassword() != null
+                        if (monitoringConfigOverride.getSendFiles().getVault() != null &&
+                                monitoringConfigOverride.getSendFiles().getVault().getUrl() != null &&
+                                monitoringConfigOverride.getSendFiles().getVault().getToken() != null
 
                         ) {
-                            defaultVal.getSendFiles().getServerConsumer().setVault(new ProfilingConfig.MonitoringConfig.MonitoringSendFilesConfig.ServerConsumerConfig.VaultConfig());
-                            defaultVal.getSendFiles().getServerConsumer().getVault().setUrl(monitoringConfigOverride.getSendFiles().getServerConsumer().getVault().getUrl());
-                            defaultVal.getSendFiles().getServerConsumer().getVault().setLogin(monitoringConfigOverride.getSendFiles().getServerConsumer().getVault().getLogin());
-                            defaultVal.getSendFiles().getServerConsumer().getVault().setPassword(monitoringConfigOverride.getSendFiles().getServerConsumer().getVault().getPassword());
-
+                            defaultVal.getSendFiles().setVault(new ProfilingConfig.MonitoringConfig.MonitoringSendFilesConfig.VaultConfig());
+                            defaultVal.getSendFiles().getVault().setUrl(monitoringConfigOverride.getSendFiles().getVault().getUrl());
+                            defaultVal.getSendFiles().getVault().setToken(monitoringConfigOverride.getSendFiles().getVault().getToken());
                         }
 
                         if (monitoringConfigOverride.getSendFiles().getServerConsumer().getProxy() != null &&

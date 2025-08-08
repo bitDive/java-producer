@@ -1,6 +1,9 @@
-package io.bitdive.parent.trasirovka.agent.byte_buddy_agent;
+package io.bitdive.parent.trasirovka.agent.byte_buddy_agent.db;
 
+import io.bitdive.parent.parserConfig.YamlParserConfig;
+import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import net.bytebuddy.agent.builder.AgentBuilder;
+import net.bytebuddy.agent.builder.ResettableClassFileTransformer;
 import net.bytebuddy.implementation.MethodDelegation;
 import net.bytebuddy.implementation.bind.annotation.*;
 import net.bytebuddy.matcher.ElementMatchers;
@@ -14,8 +17,8 @@ import static io.bitdive.parent.message_producer.MessageService.sendMessageCriti
 
 public class ByteBuddyAgentSqlDriver {
 
-    public static void init(Instrumentation instrumentation) {
-        new AgentBuilder.Default()
+    public static ResettableClassFileTransformer init(Instrumentation instrumentation) {
+        return new AgentBuilder.Default()
                 .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
                 .type(ElementMatchers.isSubTypeOf(Driver.class))
                 .transform((builder, typeDescription, classLoader, module, protectionDomain) ->
@@ -35,6 +38,7 @@ public class ByteBuddyAgentSqlDriver {
             String url = (args[0] instanceof String) ? (String) args[0] : null;
             // Properties info = (args[1] instanceof Properties) ? (Properties) args[1] : null;
 
+            if (LoggerStatusContent.getEnabledProfile()) return zuper.call();
             try {
                 return zuper.call();
             } catch (Exception t) {

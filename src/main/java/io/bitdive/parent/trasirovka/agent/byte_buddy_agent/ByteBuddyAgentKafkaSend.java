@@ -1,11 +1,13 @@
 package io.bitdive.parent.trasirovka.agent.byte_buddy_agent;
 
 import com.github.f4b6a3.uuid.UuidCreator;
+import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.ContextManager;
 import io.bitdive.parent.trasirovka.agent.utils.KafkaAgentStorage;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import io.bitdive.parent.trasirovka.agent.utils.ReflectionUtils;
 import net.bytebuddy.agent.builder.AgentBuilder;
+import net.bytebuddy.agent.builder.ResettableClassFileTransformer;
 import net.bytebuddy.asm.Advice;
 
 import java.lang.instrument.Instrumentation;
@@ -21,8 +23,8 @@ import static net.bytebuddy.matcher.ElementMatchers.*;
 
 public class ByteBuddyAgentKafkaSend {
 
-    public static void init(Instrumentation instrumentation) {
-        new AgentBuilder.Default()
+    public static ResettableClassFileTransformer init(Instrumentation instrumentation) {
+        return new AgentBuilder.Default()
                 .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
                 .type(typeDescription ->
                         Objects.equals(typeDescription.getCanonicalName(), "org.apache.kafka.clients.producer.KafkaProducer"))
@@ -44,6 +46,9 @@ public class ByteBuddyAgentKafkaSend {
                 @Advice.Origin("#t.#m") String method,
                 @Advice.AllArguments Object[] args) {
             MethodContext context = new MethodContext();
+
+            if (LoggerStatusContent.getEnabledProfile()) return context;
+
             if (args.length > 0) {
                 context.flagMonitoring = true;
                 context.spanId = ContextManager.getSpanId();
@@ -113,6 +118,7 @@ public class ByteBuddyAgentKafkaSend {
         public static void onExit(
                 @Advice.Enter MethodContext context,
                 @Advice.Thrown Throwable throwable) {
+            if (LoggerStatusContent.getEnabledProfile()) return;
             if (context.flagMonitoring) {
                 String errorMessage = "";
 

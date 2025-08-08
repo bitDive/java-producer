@@ -1,8 +1,10 @@
 package io.bitdive.parent.trasirovka.agent.byte_buddy_agent;
 
+import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.KafkaAgentStorage;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import net.bytebuddy.agent.builder.AgentBuilder;
+import net.bytebuddy.agent.builder.ResettableClassFileTransformer;
 import net.bytebuddy.implementation.MethodDelegation;
 import net.bytebuddy.implementation.bind.annotation.AllArguments;
 import net.bytebuddy.implementation.bind.annotation.Origin;
@@ -22,8 +24,8 @@ public class ByteBuddyAgentKafkaInterceptor {
 
     private static final Map<Object, String> NC_BOOTSTRAP_MAP = new ConcurrentHashMap<>();
 
-    public static void init(Instrumentation instrumentation) {
-        new AgentBuilder.Default()
+    public static ResettableClassFileTransformer init(Instrumentation instrumentation) {
+        return new AgentBuilder.Default()
                 .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
                 .type(ElementMatchers.named("org.apache.kafka.clients.NetworkClient"))
                 .transform((builder, typeDescription, classLoader, module, protectionDomain) ->
@@ -39,7 +41,10 @@ public class ByteBuddyAgentKafkaInterceptor {
         @RuntimeType
         public static Object intercept(@Origin Method method,
                                        @SuperCall Callable<?> zuper,
-                                       @AllArguments Object[] args) {
+                                       @AllArguments Object[] args) throws Exception {
+
+            if (LoggerStatusContent.getEnabledProfile()) return zuper.call();
+
             Object result = null;
             try {
                 result = zuper.call();

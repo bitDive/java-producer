@@ -1,7 +1,8 @@
-package io.bitdive.parent.aspect;
+package io.bitdive.aspect;
 
 import com.github.f4b6a3.uuid.UuidCreator;
 import io.bitdive.parent.trasirovka.agent.utils.ContextManager;
+import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import io.bitdive.parent.trasirovka.agent.utils.ReflectionUtils;
 import io.bitdive.parent.utils.MethodTypeEnum;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -16,14 +17,13 @@ import static io.bitdive.parent.message_producer.MessageService.sendMessageEnd;
 import static io.bitdive.parent.message_producer.MessageService.sendMessageStart;
 import static io.bitdive.parent.trasirovka.agent.utils.DataUtils.*;
 
-@Component
 @Aspect
-public class SchedulerAspect {
-    @Around("@annotation(org.springframework.scheduling.annotation.Scheduled)")
-    public Object aroundFeignClientMethods(ProceedingJoinPoint joinPoint) throws Throwable {
-        ContextManager.createNewRequest();
-        //if (!ContextManager.isMessageIdQueueEmpty()) return joinPoint.proceed();
+@Component
+public class FeignClientAspect {
 
+    @Around("@within(org.springframework.cloud.openfeign.FeignClient)")
+    public Object aroundFeignClientMethods(ProceedingJoinPoint joinPoint) throws Throwable {
+        if (LoggerStatusContent.getEnabledProfile()) return joinPoint.proceed();
         String UUIDMessage = UuidCreator.getTimeBased().toString();
         Object retVal = null;
         Throwable thrown = null;
@@ -39,10 +39,13 @@ public class SchedulerAspect {
                     ContextManager.getSpanId(),
                     OffsetDateTime.now(),
                     ContextManager.getParentIdMessageIdQueue(),
-                    true,
-                    ReflectionUtils.objectToString(paramConvert(joinPoint.getArgs())),
-                    MethodTypeEnum.SCHEDULER.toString(), "", ""
+                    false,
+                    ReflectionUtils.objectToString(paramConvert(joinPoint.getArgs(), methodSig.getMethod())),
+                    MethodTypeEnum.METHOD.toString(),
+                    "",
+                    ""
             );
+
 
             ContextManager.setMethodCallContextQueue(UUIDMessage);
 
@@ -61,6 +64,7 @@ public class SchedulerAspect {
                     ContextManager.getTraceId(),
                     ContextManager.getSpanId()
             );
+
 
             ContextManager.removeLastQueue();
         }

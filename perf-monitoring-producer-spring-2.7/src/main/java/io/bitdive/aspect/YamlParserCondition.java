@@ -1,4 +1,4 @@
-package io.bitdive.parent.aspect;
+package io.bitdive.aspect;
 
 import io.bitdive.parent.parserConfig.YamlParserConfig;
 import org.springframework.context.annotation.Condition;

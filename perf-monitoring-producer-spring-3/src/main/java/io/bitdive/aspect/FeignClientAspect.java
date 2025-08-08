@@ -1,7 +1,8 @@
-package io.bitdive.parent.aspect;
+package io.bitdive.aspect;
 
 import com.github.f4b6a3.uuid.UuidCreator;
 import io.bitdive.parent.trasirovka.agent.utils.ContextManager;
+import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import io.bitdive.parent.trasirovka.agent.utils.ReflectionUtils;
 import io.bitdive.parent.utils.MethodTypeEnum;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -16,12 +17,13 @@ import static io.bitdive.parent.message_producer.MessageService.sendMessageEnd;
 import static io.bitdive.parent.message_producer.MessageService.sendMessageStart;
 import static io.bitdive.parent.trasirovka.agent.utils.DataUtils.*;
 
-@Component
 @Aspect
-public class RepositoryAspect {
+@Component
+public class FeignClientAspect {
 
-    @Around(" (execution(* org.springframework.data.repository.Repository+.*(..)) || execution(* org.springframework.data.jpa.repository.JpaRepository+.*(..)) ) && !execution(* java.lang.Object.*(..))")
-    public Object aroundRepositoryMethods(ProceedingJoinPoint joinPoint) throws Throwable {
+    @Around("@within(org.springframework.cloud.openfeign.FeignClient)")
+    public Object aroundFeignClientMethods(ProceedingJoinPoint joinPoint) throws Throwable {
+        if (LoggerStatusContent.getEnabledProfile()) return joinPoint.proceed();
         String UUIDMessage = UuidCreator.getTimeBased().toString();
         Object retVal = null;
         Throwable thrown = null;
@@ -38,9 +40,12 @@ public class RepositoryAspect {
                     OffsetDateTime.now(),
                     ContextManager.getParentIdMessageIdQueue(),
                     false,
-                    ReflectionUtils.objectToString(paramConvert(joinPoint.getArgs())),
-                    MethodTypeEnum.DB.toString(), "", ""
+                    ReflectionUtils.objectToString(paramConvert(joinPoint.getArgs(), methodSig.getMethod())),
+                    MethodTypeEnum.METHOD.toString(),
+                    "",
+                    ""
             );
+
 
             ContextManager.setMethodCallContextQueue(UUIDMessage);
 
@@ -60,10 +65,10 @@ public class RepositoryAspect {
                     ContextManager.getSpanId()
             );
 
+
             ContextManager.removeLastQueue();
         }
 
         return retVal;
     }
-
 }

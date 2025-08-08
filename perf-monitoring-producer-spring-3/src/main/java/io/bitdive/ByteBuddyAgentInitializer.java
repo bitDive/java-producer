@@ -1,27 +1,36 @@
 package io.bitdive;
 
 
+import io.bitdive.jvm_metrics.GenerateJvmMetrics;
 import io.bitdive.parent.init.MonitoringStarting;
 import io.bitdive.parent.message_producer.LibraryLoggerConfig;
+import io.bitdive.parent.parserConfig.ConfigForServiceDTO;
 import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import io.bitdive.parent.utils.LibraryVersionBitDive;
 import org.springframework.context.ApplicationContextInitializer;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.core.env.ConfigurableEnvironment;
 
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 public class ByteBuddyAgentInitializer implements ApplicationContextInitializer<ConfigurableApplicationContext> {
     private static boolean initializeAgent = false;
 
+    private static ScheduledExecutorService scheduler;
 
     @Override
     public void initialize(ConfigurableApplicationContext applicationContext) {
         try {
-            String[] activeProfiles = applicationContext.getEnvironment().getActiveProfiles();
+            ConfigurableEnvironment env = applicationContext.getEnvironment();
+            String[] activeProfiles = env.getActiveProfiles();
 
             if (initializeAgent) {
                 return;
@@ -32,8 +41,52 @@ public class ByteBuddyAgentInitializer implements ApplicationContextInitializer<
                 return;
             }
 
-            YamlParserConfig.loadConfig();
+            String moduleName = env.getProperty("bitdive.monitoring.moduleName");
+            String serviceName = env.getProperty("bitdive.monitoring.serviceName");
+            List<String> packedScanner = env.getProperty("bitdive.monitoring.packedScanner", List.class);
+
+            String serverUrl = env.getProperty("bitdive.monitoring.server-url");
+            String token = env.getProperty("bitdive.monitoring.token");
+
+            ConfigForServiceDTO configForServiceDTO = ConfigForServiceDTO.builder()
+                    .moduleName(moduleName)
+                    .serviceName(serviceName)
+                    .packedScanner(packedScanner)
+                    .serverUrl(serverUrl)
+                    .token(token)
+                    .build();
+
+            scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "minute-task");
+                t.setDaemon(true);
+                return t;
+            });
+
+            final ConfigForServiceDTO configForServiceDTOFinal = configForServiceDTO;
+
+            Runnable task = () -> {
+                try {
+                    if (initializeAgent) {
+                        YamlParserConfig.setWork(false);
+                        YamlParserConfig.loadConfig(configForServiceDTOFinal);
+                        YamlParserConfig.getProfilingConfig().detectActualConfig(activeProfiles);
+                        LibraryLoggerConfig.init();
+                        GenerateJvmMetrics.init();
+                        if (LoggerStatusContent.isDebug()) {
+                            System.err.println("Minute task reload config ");
+                        }
+                        YamlParserConfig.setWork(true);
+                    }
+                } catch (Throwable ex) {
+                }
+            };
+
+
+            scheduler.scheduleAtFixedRate(task, 1, 1, TimeUnit.MINUTES);
+
+            YamlParserConfig.loadConfig(configForServiceDTO);
             YamlParserConfig.setLibraryVersion(LibraryVersionBitDive.version);
+
 
             if (YamlParserConfig.getProfilingConfig().getNotWorkWithSpringProfiles() != null &&
                     !YamlParserConfig.getProfilingConfig().getNotWorkWithSpringProfiles().isEmpty()) {
@@ -66,7 +119,11 @@ public class ByteBuddyAgentInitializer implements ApplicationContextInitializer<
 
             LibraryLoggerConfig.init();
             MonitoringStarting.init();
+            GenerateJvmMetrics.init();
+
             initializeAgent = true;
+            YamlParserConfig.setWork(true);
+
         } catch (Exception e) {
             if (LoggerStatusContent.isErrorsOrDebug()) {
                 initializeAgent = true;

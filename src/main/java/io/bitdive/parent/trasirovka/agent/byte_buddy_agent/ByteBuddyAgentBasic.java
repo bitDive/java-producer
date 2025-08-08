@@ -1,6 +1,7 @@
 package io.bitdive.parent.trasirovka.agent.byte_buddy_agent;
 
 import com.github.f4b6a3.uuid.UuidCreator;
+import io.bitdive.parent.anotations.MonitoringClass;
 import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.ContextManager;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
@@ -9,6 +10,7 @@ import io.bitdive.parent.utils.MethodTypeEnum;
 import io.bitdive.parent.utils.Pair;
 import io.bitdive.parent.utils.UtilsDataConvert;
 import net.bytebuddy.agent.builder.AgentBuilder;
+import net.bytebuddy.agent.builder.ResettableClassFileTransformer;
 import net.bytebuddy.description.NamedElement;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.implementation.MethodDelegation;
@@ -32,13 +34,15 @@ import static io.bitdive.parent.utils.UtilsDataConvert.*;
 import static net.bytebuddy.matcher.ElementMatchers.*;
 
 public class ByteBuddyAgentBasic {
+
     public static ElementMatcher.Junction<TypeDescription> getSpringComponentMatcher() {
         boolean monitoringOnlySpringComponent = YamlParserConfig.getProfilingConfig()
                 .getMonitoring()
                 .getMonitoringOnlySpringComponent();
 
         if (monitoringOnlySpringComponent) {
-            return ElementMatchers.isAnnotatedWith(nameContains("org.springframework"));
+            return ElementMatchers.isAnnotatedWith(nameContains("org.springframework"))
+                    .or(ElementMatchers.isAnnotatedWith(MonitoringClass.class));
         } else {
             return ElementMatchers.any();
         }
@@ -65,24 +69,27 @@ public class ByteBuddyAgentBasic {
         return matcher;
     }
 
-    public static void init(Instrumentation instrumentation) {
-        new AgentBuilder.Default()
+    public static ResettableClassFileTransformer init(Instrumentation instrumentation) {
+        ElementMatcher.Junction<TypeDescription> monitoredTypes =
+                getApplicationPackedScanner(
+                        YamlParserConfig.getProfilingConfig().getApplication().getPackedScanner())
+                        .and(getSpringComponentMatcher())
+                        .and(not(isEnum()))
+                        .and(not(isAnnotatedWith(named("io.bitdive.parent.anotations.NotMonitoring"))))
+                        .and(not(isAnnotatedWith(nameContains("org.springframework.data."))))
+                        .and(not(nameEndsWith("Configuration")))
+                        .and(not(nameEndsWith("RefreshScope")))
+                        .and(not(nameEndsWith("ConfigurationProperties")))
+                        .and(not(isSynthetic()))
+                        .and(not(nameMatches(".*\\$\\$.*")))     // можно убрать, если хотите ловить CGLIB
+                        .and(not(nameContains("CGLIB")))         // —//—
+                        .and(not(nameContains("ByteBuddy")))
+                        .and(not(nameContains("$")))
+                        .and(not(getExcludedSuperTypeMatcher()));
+
+        return new AgentBuilder.Default()
                 .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
-                .type(
-                        getApplicationPackedScanner(YamlParserConfig.getProfilingConfig().getApplication().getPackedScanner())
-                                .and(getSpringComponentMatcher())
-                                .and(not(isEnum()))
-                                .and(not(isAnnotatedWith(named("io.bitdive.parent.anotations.NotMonitoring"))))
-                                .and(not(nameEndsWith("Configuration")))
-                                .and(not(nameEndsWith("RefreshScope")))
-                                .and(not(nameEndsWith("ConfigurationProperties")))
-                                .and(not(isSynthetic()))
-                                .and(not(nameMatches(".*\\$\\$.*")))
-                                .and(not(nameContains("CGLIB")))
-                                .and(not(nameContains("ByteBuddy")))
-                                .and(not(nameContains("$")))
-                                .and(not(getExcludedSuperTypeMatcher()))
-                )
+                .type(monitoredTypes)
                 .transform((builder, typeDescription, classLoader, module, protectionDomain) ->
                         builder.method(
                                         any()
@@ -112,10 +119,11 @@ public class ByteBuddyAgentBasic {
                 @AllArguments Object[] args,
                 @SuperCall Callable<?> callable
         ) throws Throwable {
+            if (LoggerStatusContent.getEnabledProfile()) return callable.call();
+
             String UUIDMessage = "";
             Object result = null;
             try {
-
                 if (!YamlParserConfig.getProfilingConfig().getMonitoring().getMonitoringStaticMethod() &&
                         isStaticMethod(method)) {
                     return callable.call();
@@ -163,7 +171,7 @@ public class ByteBuddyAgentBasic {
                         OffsetDateTime.now(),
                         ContextManager.getParentIdMessageIdQueue(),
                         flagNewSpan.getVal(),
-                        ReflectionUtils.objectToString(paramConvert(args)),
+                        ReflectionUtils.objectToString(paramConvert(args, method)),
                         flagNewSpan.getKey().toString(),
                         urlVal,
                         serviceCallId

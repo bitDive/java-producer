@@ -16,9 +16,6 @@ import java.util.Optional;
 import static io.bitdive.parent.trasirovka.agent.utils.ReflectionUtils.SENSITIVE_KEYWORDS;
 
 
-//import static io.bitdive.parent.trasirovka.agent.utils.JsonSerializerBitDive.SENSITIVE_KEYWORDS;
-
-
 public class MessageService {
     private static final Logger logger = LibraryLoggerConfig.getLogger(MessageService.class);
 
@@ -26,6 +23,7 @@ public class MessageService {
 
 
     private static void sendMessage(String message) {
+        if (LoggerStatusContent.getEnabledProfile()) return;
         if (LoggerStatusContent.isDebug()) {
             System.out.println(message);
         }
@@ -97,6 +95,53 @@ public class MessageService {
         } catch (Exception e) {
             return url;
         }
+    }
+
+    public static void sendMessageSOAPEnd(String messageId,
+                                          String traceId,
+                                          String spanId,
+
+                                          String soapResponseBody,
+                                          OffsetDateTime dateEnd,
+                                          String error,
+                                          MessageTypeEnum messageTypeEnum) {
+
+        sendMessage(buildMessage(
+                messageTypeEnum.name(),                                // 0
+                messageId,                                             // 1
+                traceId,                                               // 2
+                spanId,                                                // 3
+                Optional.ofNullable(soapResponseBody).orElse(""),      // 5
+                dateEnd.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),// 6
+                Optional.ofNullable(error).orElse(""),                 // 7
+                YamlParserConfig.getLibraryVersion()                   // 8
+        ));
+    }
+
+    public static void sendMessageSOAPStart(String messageId,
+                                            String traceId,
+                                            String spanId,
+                                            String endpointUrl,
+                                            String operation,
+                                            String soapRequestBody,
+                                            OffsetDateTime dateStart,
+                                            String parentMessageId,
+                                            MessageTypeEnum messageTypeEnum) {
+
+        sendMessage(buildMessage(
+                messageTypeEnum.name(),                    // 0  – тип (SOAP_START / SOAP_END ...)
+                messageId,                                 // 1
+                traceId,                                   // 2
+                spanId,                                    // 3
+                sanitizeUrl(Optional.ofNullable(endpointUrl).orElse("")), // 4
+                operation,
+                Optional.ofNullable(soapRequestBody).orElse(""),          // 5
+                dateStart.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME), // 6
+                parentMessageId,                           // 7
+                YamlParserConfig.getLibraryVersion(),      // 8
+                YamlParserConfig.getProfilingConfig().getApplication().getModuleName(),
+                YamlParserConfig.getProfilingConfig().getApplication().getServiceName()
+        ));
     }
 
     public static void sendMessageStart(String messageId,
@@ -210,11 +255,12 @@ public class MessageService {
         ));
     }
 
-    public static void sendMessageSQLStart(String messageId, String traceId, String spanId,
-                                           String sql, String connectionUrl,
-                                           OffsetDateTime dateStart, String parentMessageId) {
+    public static void sendMessageDBStart(String messageId, String traceId, String spanId,
+                                          String sql, String connectionUrl,
+                                          OffsetDateTime dateStart, String parentMessageId,
+                                          MessageTypeEnum messageTypeEnum) {
         sendMessage(buildMessage(
-                MessageTypeEnum.SQL_START.name(),
+                messageTypeEnum.name(),
                 messageId,
                 traceId,
                 spanId,
@@ -223,6 +269,30 @@ public class MessageService {
                 dateStart.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
                 parentMessageId,
                 YamlParserConfig.getLibraryVersion()
+        ));
+    }
+
+
+    public static void sendMessageDBEnd(String messageId, String traceId, String spanId, OffsetDateTime dateEnd, String error, MessageTypeEnum messageTypeEnum) {
+        sendMessage(buildMessage(
+                messageTypeEnum.name(),
+                messageId,
+                traceId,
+                spanId,
+                dateEnd.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                Optional.ofNullable(error).orElse("")
+        ));
+    }
+
+    public static void sendMessageDBRedisEnd(String messageId, String traceId, String spanId, OffsetDateTime dateEnd, String error, MessageTypeEnum messageTypeEnum, String retValue) {
+        sendMessage(buildMessage(
+                messageTypeEnum.name(),
+                messageId,
+                traceId,
+                spanId,
+                dateEnd.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                Optional.ofNullable(error).orElse(""),
+                retValue
         ));
     }
 
@@ -250,16 +320,6 @@ public class MessageService {
         ));
     }
 
-    public static void sendMessageSQLEnd(String messageId, String traceId, String spanId, OffsetDateTime dateEnd, String error) {
-        sendMessage(buildMessage(
-                MessageTypeEnum.SQL_END.name(),
-                messageId,
-                traceId,
-                spanId,
-                dateEnd.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
-                Optional.ofNullable(error).orElse("")
-        ));
-    }
 
     public static void sendMessageWebResponse(String messageId, String traceId, String spanId, Integer codeResponse) {
         String codeResponseStr = codeResponse != null ? codeResponse.toString() : "";

@@ -1,4 +1,4 @@
-package io.bitdive.parent.aspect;
+package io.bitdive.aspect;
 
 import com.github.f4b6a3.uuid.UuidCreator;
 import io.bitdive.parent.trasirovka.agent.utils.ContextManager;
@@ -35,6 +35,7 @@ public class KafkaListenerAspect {
 
     @Around("@annotation(org.springframework.kafka.annotation.KafkaListener)")
     public Object aroundKafkaListener(ProceedingJoinPoint joinPoint) throws Throwable {
+        if (LoggerStatusContent.getEnabledProfile()) return joinPoint.proceed();
         ContextManager.createNewRequest();
         String uuidMessage = UuidCreator.getTimeBased().toString();
         Throwable thrown = null;
@@ -95,7 +96,7 @@ public class KafkaListenerAspect {
                     startTime,
                     OffsetDateTime.now(),
                     true,
-                    ReflectionUtils.objectToString(paramConvert(joinPoint.getArgs())),
+                    ReflectionUtils.objectToString(paramConvert(joinPoint.getArgs(), method)),
                     topicName,
                     groupName,
                     KafkaAgentStorage.getBootstrap(),

@@ -1,7 +1,8 @@
-package io.bitdive.parent.aspect;
+package io.bitdive.aspect;
 
 import com.github.f4b6a3.uuid.UuidCreator;
 import io.bitdive.parent.trasirovka.agent.utils.ContextManager;
+import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import io.bitdive.parent.trasirovka.agent.utils.ReflectionUtils;
 import io.bitdive.parent.utils.MethodTypeEnum;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -16,12 +17,15 @@ import static io.bitdive.parent.message_producer.MessageService.sendMessageEnd;
 import static io.bitdive.parent.message_producer.MessageService.sendMessageStart;
 import static io.bitdive.parent.trasirovka.agent.utils.DataUtils.*;
 
-@Aspect
 @Component
-public class FeignClientAspect {
-
-    @Around("@within(org.springframework.cloud.openfeign.FeignClient)")
+@Aspect
+public class SchedulerAspect {
+    @Around("@annotation(org.springframework.scheduling.annotation.Scheduled)")
     public Object aroundFeignClientMethods(ProceedingJoinPoint joinPoint) throws Throwable {
+        if (LoggerStatusContent.getEnabledProfile()) return joinPoint.proceed();
+        ContextManager.createNewRequest();
+        //if (!ContextManager.isMessageIdQueueEmpty()) return joinPoint.proceed();
+
         String UUIDMessage = UuidCreator.getTimeBased().toString();
         Object retVal = null;
         Throwable thrown = null;
@@ -37,13 +41,10 @@ public class FeignClientAspect {
                     ContextManager.getSpanId(),
                     OffsetDateTime.now(),
                     ContextManager.getParentIdMessageIdQueue(),
-                    false,
-                    ReflectionUtils.objectToString(paramConvert(joinPoint.getArgs())),
-                    MethodTypeEnum.METHOD.toString(),
-                    "",
-                    ""
+                    true,
+                    ReflectionUtils.objectToString(paramConvert(joinPoint.getArgs(), methodSig.getMethod())),
+                    MethodTypeEnum.SCHEDULER.toString(), "", ""
             );
-
 
             ContextManager.setMethodCallContextQueue(UUIDMessage);
 
@@ -62,7 +63,6 @@ public class FeignClientAspect {
                     ContextManager.getTraceId(),
                     ContextManager.getSpanId()
             );
-
 
             ContextManager.removeLastQueue();
         }

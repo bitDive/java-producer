@@ -19,28 +19,41 @@ public class LibraryLoggerConfig {
 
 
     public static void init() {
+        if (loggerContext != null) {
+            return;
+        }
+
         ConfigurationBuilder<BuiltConfiguration> builder = ConfigurationBuilderFactory.newConfigurationBuilder();
 
         builder.setStatusLevel(Level.WARN);
 
+        AppenderComponentBuilder rollingFileAppender =
+                builder.newAppender("MonitoringCustomConfig", "RollingRandomAccessFile")
+                        .addAttribute("fileName", YamlParserConfig.getProfilingConfig().getMonitoring().getDataFile().getPath() + File.separator + "monitoringFile.data")
+                        .addAttribute("filePattern",
+                                YamlParserConfig.getProfilingConfig().getMonitoring()
+                                        .getDataFile().getPath()
+                                        + File.separator + "toSend" + File.separator
+                                        + "data-%d{yyyy-MM-dd-HH-mm-ss}-%i_"
+                                        + YamlParserConfig.getProfilingConfig().getApplication()
+                                        .getServiceName()
+                                        + ".data.gz");
 
-        AppenderComponentBuilder rollingFileAppender = builder.newAppender("MonitoringCustomConfig", "RollingRandomAccessFile")
-                .addAttribute("fileName", YamlParserConfig.getProfilingConfig().getMonitoring().getDataFile().getPath() + File.separator + "monitoringFile.data")
-                .addAttribute("filePattern",
-                        YamlParserConfig.getProfilingConfig().getMonitoring().getDataFile().getPath() + File.separator +
-                                "toSend" + File.separator +
-                                "data-%d{yyyy-MM-dd-HH-mm-ss}_" + YamlParserConfig.getProfilingConfig().getApplication().getServiceName() + ".data.gz");
 
-
-        LayoutComponentBuilder layoutBuilder = builder.newLayout("PatternLayout")
-                .addAttribute("pattern", "%m");
+        LayoutComponentBuilder layoutBuilder = builder.newLayout("PatternLayout").addAttribute("pattern", "%m");
         rollingFileAppender.add(layoutBuilder);
 
         ComponentBuilder<?> policies = builder.newComponent("Policies")
-                .addComponent(
-                        builder.newComponent("CronTriggeringPolicy")
-                                .addAttribute("schedule", "*/" + YamlParserConfig.getProfilingConfig().getMonitoring().getDataFile().getTimerConvertForSend() + " * * * * ?")
-                );
+
+                .addComponent(builder.newComponent("CronTriggeringPolicy")
+                        .addAttribute("schedule",
+                                "*/" + YamlParserConfig.getProfilingConfig()
+                                        .getMonitoring()
+                                        .getDataFile()
+                                        .getTimerConvertForSend()
+                                        + " * * * * ?"))
+                .addComponent(builder.newComponent("SizeBasedTriggeringPolicy")
+                        .addAttribute("size", "100MB"));
         rollingFileAppender.addComponent(policies);
 
         builder.add(rollingFileAppender);
@@ -93,5 +106,20 @@ public class LibraryLoggerConfig {
 
     public static Logger getLogger(Class<?> clazz) {
         return loggerContext.getLogger(clazz.getName());
+    }
+
+    /**
+     * Правильная остановка логгер контекста с остановкой всех аппендеров
+     */
+    public static void stopLoggerContext() {
+        if (loggerContext != null) {
+            // Явно останавливаем все аппендеры перед остановкой контекста
+            loggerContext.getConfiguration().getAppenders().values().forEach(appender -> {
+                if (appender instanceof CustomHttpAppender) {
+                    appender.stop();
+                }
+            });
+            loggerContext.stop();
+        }
     }
 }

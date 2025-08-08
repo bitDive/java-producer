@@ -1,4 +1,4 @@
-package io.bitdive.parent.jvm_metrics;
+package io.bitdive.jvm_metrics;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;

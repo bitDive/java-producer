@@ -4,6 +4,7 @@ import io.bitdive.parent.dto.TraceMethodContext;
 import io.bitdive.parent.trasirovka.agent.utils.ContextCallableCustom;
 import io.bitdive.parent.trasirovka.agent.utils.ContextManager;
 import net.bytebuddy.agent.builder.AgentBuilder;
+import net.bytebuddy.agent.builder.ResettableClassFileTransformer;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.matcher.ElementMatchers;
 
@@ -11,8 +12,8 @@ import java.lang.instrument.Instrumentation;
 import java.util.concurrent.Callable;
 
 public class ByteBuddyAgentThread {
-    public static void init(Instrumentation instrumentation) {
-        new AgentBuilder.Default()
+    public static ResettableClassFileTransformer init(Instrumentation instrumentation) {
+        return new AgentBuilder.Default()
                 .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
                 .with(AgentBuilder.InitializationStrategy.NoOp.INSTANCE)
                 .type(ElementMatchers.nameStartsWith("org.springframework.util.concurrent.FutureUtils"))

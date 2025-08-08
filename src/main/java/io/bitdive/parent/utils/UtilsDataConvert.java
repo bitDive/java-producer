@@ -86,7 +86,6 @@ public class UtilsDataConvert {
     public static boolean sendFile(File file, Proxy proxy, String methodOnServer) {
         try {
             boolean isSSLSend = YamlParserConfig.getProfilingConfig().getMonitoring().getSendFiles().getServerConsumer().isSSLSend();
-            if (isSSLSend) SSLContextCustomBitDive.ensureValidCertificate();
 
             byte[] fileBytes = readFileBytes(file);
             String base64Data = Base64.getEncoder().encodeToString(fileBytes);

@@ -1,8 +1,10 @@
 package io.bitdive.parent.trasirovka.agent.byte_buddy_agent;
 
+import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.ContextManager;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import net.bytebuddy.agent.builder.AgentBuilder;
+import net.bytebuddy.agent.builder.ResettableClassFileTransformer;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.matcher.ElementMatchers;
 
@@ -12,9 +14,9 @@ import java.lang.reflect.Method;
 
 
 public class ByteBuddyAgentResponseWeb {
-    public static void init(Instrumentation instrumentation) {
+    public static ResettableClassFileTransformer init(Instrumentation instrumentation) {
         try {
-            new AgentBuilder.Default()
+            return new AgentBuilder.Default()
                     .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
                     .type(ElementMatchers.named("org.apache.catalina.connector.CoyoteAdapter"))
                     .transform((builder, typeDescription, classLoader, module, dd) ->
@@ -28,6 +30,7 @@ public class ByteBuddyAgentResponseWeb {
             if (LoggerStatusContent.isErrorsOrDebug())
                 System.err.println("not found class org.apache.catalina.connector.CoyoteAdapte");
         }
+        return null;
 
     }
 
@@ -35,6 +38,7 @@ public class ByteBuddyAgentResponseWeb {
     public static class CoyoteAdapterAdvice {
         @Advice.OnMethodEnter
         public static void onEnter(@Advice.Argument(0) Object request) {
+            if (LoggerStatusContent.getEnabledProfile()) return;
             try {
                 ContextManager.createNewRequest();
                 ContextManager.setUrlStart(extractFullUrlFromRequest(request));

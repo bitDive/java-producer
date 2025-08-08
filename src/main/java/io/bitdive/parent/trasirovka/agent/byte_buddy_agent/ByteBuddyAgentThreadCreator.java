@@ -3,6 +3,7 @@ package io.bitdive.parent.trasirovka.agent.byte_buddy_agent;
 import io.bitdive.parent.trasirovka.agent.utils.ContextManager;
 import io.bitdive.parent.trasirovka.agent.utils.ContextRunnableCustom;
 import net.bytebuddy.agent.builder.AgentBuilder;
+import net.bytebuddy.agent.builder.ResettableClassFileTransformer;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.matcher.ElementMatchers;
 
@@ -10,8 +11,8 @@ import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Method;
 
 public class ByteBuddyAgentThreadCreator {
-    public static void init(Instrumentation instrumentation) {
-        new AgentBuilder.Default()
+    public static ResettableClassFileTransformer init(Instrumentation instrumentation) {
+        return new AgentBuilder.Default()
                 .type(ElementMatchers.nameStartsWith("org.springframework.util.CustomizableThreadCreator"))  // Укажите пакет ваших классов
                 .transform((builder, typeDescription, classLoader, module, sd) ->
                         builder.method(ElementMatchers.named("createThread"))  // Выбор всех методов для обертки

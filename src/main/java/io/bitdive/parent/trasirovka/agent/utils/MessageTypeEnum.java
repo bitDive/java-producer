@@ -11,4 +11,19 @@ public enum MessageTypeEnum {
     CRITICAL_KAFKA_ERROR,
     KAFKA_SEND,
     KAFKA_CONSUMER,
+
+    CASSANDRA_DB_START,
+    CASSANDRA_DB_END,
+
+    MONGO_DB_START,
+    MONGO_DB_END,
+
+    REDIS_DB_START,
+    REDIS_DB_END,
+
+    NEO4J_DB_START,
+    NEO4J_DB_END,
+
+    SOAP_START,
+    SOAP_END,
 }

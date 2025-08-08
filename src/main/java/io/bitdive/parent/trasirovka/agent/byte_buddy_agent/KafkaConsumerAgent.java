@@ -1,7 +1,10 @@
 package io.bitdive.parent.trasirovka.agent.byte_buddy_agent;
 
+import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.KafkaAgentStorage;
+import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import net.bytebuddy.agent.builder.AgentBuilder;
+import net.bytebuddy.agent.builder.ResettableClassFileTransformer;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.matcher.ElementMatchers;
 
@@ -10,8 +13,8 @@ import java.util.Map;
 import java.util.Optional;
 
 public class KafkaConsumerAgent {
-    public static void init(Instrumentation instrumentation) {
-        new AgentBuilder.Default()
+    public static ResettableClassFileTransformer init(Instrumentation instrumentation) {
+        return new AgentBuilder.Default()
                 .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
                 .type(ElementMatchers.named("org.apache.kafka.clients.consumer.KafkaConsumer"))
                 .transform((builder, typeDescription, classLoader, module, dd) ->
@@ -27,6 +30,7 @@ public class KafkaConsumerAgent {
     public static class KafkaConsumerConstructorAdvice {
         @Advice.OnMethodEnter
         public static void onEnter(@Advice.AllArguments Object[] allArgs) {
+            if (LoggerStatusContent.getEnabledProfile()) return;
             try {
                 Object bootstrapServers = null;
                 if (allArgs.length > 0) {

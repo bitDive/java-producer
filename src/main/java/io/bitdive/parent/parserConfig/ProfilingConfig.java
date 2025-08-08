@@ -2,7 +2,7 @@ package io.bitdive.parent.parserConfig;
 
 import lombok.Getter;
 import lombok.Setter;
-import org.springframework.util.ObjectUtils;
+import org.apache.commons.lang3.ObjectUtils;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -20,45 +20,19 @@ public class ProfilingConfig {
     private AuthorisationConfig authorisation;
 
     public void detectActualConfig(String[] profileNames) {
-        if (ObjectUtils.isEmpty(profileNames) && monitoringConfigs.size() > 1) {
-            if (monitoringConfigs.stream()
-                    .filter(monitoringConfig -> ObjectUtils.isEmpty(monitoringConfig.getForSpringProfile()))
-                    .count() != 1) {
-                throw new IllegalArgumentException("profile Name must not be null or empty because monitoring more than once");
-            } else {
-                monitoring = monitoringConfigs.get(0);
-            }
-        }
-        if (monitoringConfigs.isEmpty()) {
-            throw new IllegalArgumentException("monitoring settings cannot be empty");
-        }
-
-        if (monitoringConfigs.size() == 1 && ObjectUtils.isEmpty(profileNames)) {
-            monitoring = monitoringConfigs.get(0);
-            return;
-        }
-
-        if (monitoringConfigs.size() == 1 && !ObjectUtils.isEmpty(profileNames)) {
-            if (ObjectUtils.isEmpty(monitoringConfigs.get(0).getForSpringProfile())) {
-                monitoring = monitoringConfigs.get(0);
-                return;
-            }
-
-        }
-
-        if (!ObjectUtils.isEmpty(profileNames)) {
+        if (ObjectUtils.isNotEmpty(profileNames)) {
             Set<String> activeProfileSet = Arrays.stream(profileNames).collect(Collectors.toSet());
-
 
             List<MonitoringConfig> monitoringFilterProfile =
                     monitoringConfigs.stream().filter(monitoringConfig -> {
+                        Set<String> activeProfileSetLocal = new HashSet<>(activeProfileSet);
                                 Set<String> monitoringProfileSet = Optional.ofNullable(monitoringConfig.getForSpringProfile())
                                         .map(Arrays::stream)
                                         .orElseGet(Stream::empty)
                                         .collect(Collectors.toSet());
                                 ;
-                                activeProfileSet.retainAll(monitoringProfileSet);
-                                return !activeProfileSet.isEmpty();
+                        activeProfileSetLocal.retainAll(monitoringProfileSet);
+                        return !activeProfileSetLocal.isEmpty();
                             }
                     ).collect(Collectors.toList());
             if (monitoringFilterProfile.size() > 1) {
@@ -68,7 +42,14 @@ public class ProfilingConfig {
                 throw new IllegalArgumentException("monitoring settings cannot be empty for active profile");
             }
             monitoring = monitoringFilterProfile.get(0);
-            return;
+        } else {
+            List<MonitoringConfig> monitoringFilterProfile = monitoringConfigs.stream()
+                    .filter(monitoringConfig -> monitoringConfig.getForSpringProfile() == null)
+                    .collect(Collectors.toList());
+            if (monitoringFilterProfile.isEmpty()) {
+                throw new IllegalArgumentException("monitoring settings cannot be empty for active profile");
+            }
+            monitoring = monitoringFilterProfile.get(0);
         }
 
 
@@ -85,6 +66,7 @@ public class ProfilingConfig {
         private MonitoringSendFilesConfig sendFiles;
         private MonitoringDataFile dataFile;
         private Serialization serialization;
+        private boolean enabled = true;
 
         private String[] forSpringProfile;
 
@@ -109,25 +91,17 @@ public class ProfilingConfig {
         public static class MonitoringSendFilesConfig {
             private ServerConsumerConfig serverConsumer;
             private Long schedulerTimer;
-
+            private VaultConfig vault;
 
             @Getter
             @Setter
             public static class ServerConsumerConfig {
                 private String url;
                 private ProxyConfig proxy;
-                private VaultConfig vault;
+
 
                 public boolean isSSLSend() {
                     return url.toLowerCase().contains("https");
-                }
-
-                @Getter
-                @Setter
-                public static class VaultConfig {
-                    private String url;
-                    private String login;
-                    private String password;
                 }
 
                 @Getter
@@ -138,6 +112,13 @@ public class ProfilingConfig {
                     private String username;
                     private String password;
                 }
+            }
+
+            @Getter
+            @Setter
+            public static class VaultConfig {
+                private String url;
+                private String token;
             }
         }
     }

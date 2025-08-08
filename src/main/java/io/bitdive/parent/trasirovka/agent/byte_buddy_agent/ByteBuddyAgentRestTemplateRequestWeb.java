@@ -1,11 +1,13 @@
 package io.bitdive.parent.trasirovka.agent.byte_buddy_agent;
 
 import com.github.f4b6a3.uuid.UuidCreator;
+import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.ContextManager;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import io.bitdive.parent.trasirovka.agent.utils.ReflectionUtils;
 import io.bitdive.parent.trasirovka.agent.utils.RestUtils;
 import net.bytebuddy.agent.builder.AgentBuilder;
+import net.bytebuddy.agent.builder.ResettableClassFileTransformer;
 import net.bytebuddy.implementation.MethodDelegation;
 import net.bytebuddy.implementation.bind.annotation.Origin;
 import net.bytebuddy.implementation.bind.annotation.RuntimeType;
@@ -29,11 +31,11 @@ import static io.bitdive.parent.trasirovka.agent.utils.DataUtils.getaNullThrowab
 import static io.bitdive.parent.trasirovka.agent.utils.RestUtils.normalizeResponseBodyBytes;
 
 public class ByteBuddyAgentRestTemplateRequestWeb {
-    public static void init(Instrumentation instrumentation) {
+    public static ResettableClassFileTransformer init(Instrumentation instrumentation) {
         try {
             Class<?> clientHttpRequestClass = Class.forName("org.springframework.http.client.ClientHttpRequest");
 
-            new AgentBuilder.Default()
+            return new AgentBuilder.Default()
                     .type(ElementMatchers.isSubTypeOf(clientHttpRequestClass))
                     .transform((builder, typeDescription, classLoader, module, dd) ->
                             builder.method(ElementMatchers.named("execute"))
@@ -43,6 +45,7 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
             if (LoggerStatusContent.isErrorsOrDebug())
                 System.err.println("Not found class org.springframework.http.client.ClientHttpRequest in ClassLoader.");
         }
+        return null;
     }
 
     public static class ResponseWeRestTemplateInterceptor {
@@ -51,6 +54,7 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
         public static Object intercept(@Origin Method method,
                                        @SuperCall Callable<?> zuper,
                                        @This Object request) throws Throwable {
+            if (LoggerStatusContent.getEnabledProfile()) return zuper.call();
             if (ContextManager.getMessageIdQueueNew().isEmpty()) return zuper.call();
             Object retVal = null;
             Throwable thrown = null;
