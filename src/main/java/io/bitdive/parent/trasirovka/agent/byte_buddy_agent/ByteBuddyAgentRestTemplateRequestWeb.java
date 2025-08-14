@@ -1,7 +1,6 @@
 package io.bitdive.parent.trasirovka.agent.byte_buddy_agent;
 
 import com.github.f4b6a3.uuid.UuidCreator;
-import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.ContextManager;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import io.bitdive.parent.trasirovka.agent.utils.ReflectionUtils;
@@ -34,8 +33,8 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
     public static ResettableClassFileTransformer init(Instrumentation instrumentation) {
         try {
             Class<?> clientHttpRequestClass = Class.forName("org.springframework.http.client.ClientHttpRequest");
-
             return new AgentBuilder.Default()
+                    .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
                     .type(ElementMatchers.isSubTypeOf(clientHttpRequestClass))
                     .transform((builder, typeDescription, classLoader, module, dd) ->
                             builder.method(ElementMatchers.named("execute"))
@@ -76,6 +75,7 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
 
             String errorCall = null;
 
+            boolean successLogin = false;
             try {
                 if (request.getClass().getName().contains("org.springframework.http.client")) {
                     Method getUriMethod = request.getClass().getMethod("getURI");
@@ -127,10 +127,14 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
 
                     body = Optional.ofNullable(bodyObjectVal).map(RestUtils::normalizeRequestBody).orElse("");
 
-                    Method addHeaderMethod = headers.getClass().getMethod("add", String.class, String.class);
-                    addHeaderMethod.invoke(headers, "x-BitDiv-custom-span-id", ContextManager.getSpanId());
-                    addHeaderMethod.invoke(headers, "x-BitDiv-custom-parent-message-id", ContextManager.getMessageIdQueueNew());
-                    addHeaderMethod.invoke(headers, "x-BitDiv-custom-service-call-id", serviceCallId);
+                    Method getFirstMethod = headers.getClass().getMethod("getFirst", String.class);
+                    if (getFirstMethod.invoke(headers, "x-BitDiv-custom-span-id") == null) {
+                        successLogin = true;
+                        Method addHeaderMethod = headers.getClass().getMethod("add", String.class, String.class);
+                        addHeaderMethod.invoke(headers, "x-BitDiv-custom-span-id", ContextManager.getSpanId());
+                        addHeaderMethod.invoke(headers, "x-BitDiv-custom-parent-message-id", ContextManager.getMessageIdQueueNew());
+                        addHeaderMethod.invoke(headers, "x-BitDiv-custom-service-call-id", serviceCallId);
+                    }
                 }
             } catch (Exception e) {
                 if (LoggerStatusContent.isErrorsOrDebug()) {
@@ -144,74 +148,75 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
                 thrown = t;
                 throw t;
             } finally {
-                dateEnd = OffsetDateTime.now();
+                if (successLogin) {
+                    dateEnd = OffsetDateTime.now();
 
-                if (retVal != null) {
-                    try {
-                        String responseClassName = retVal.getClass().getName();
-                        if (responseClassName.contains("org.springframework.http")) {
+                    if (retVal != null) {
+                        try {
+                            String responseClassName = retVal.getClass().getName();
+                            if (responseClassName.contains("org.springframework.http")) {
 
-                            Method getStatusCodeMethod = retVal.getClass().getMethod("getStatusCode");
-                            getStatusCodeMethod.setAccessible(true);
-                            Object statusCode = getStatusCodeMethod.invoke(retVal);
+                                Method getStatusCodeMethod = retVal.getClass().getMethod("getStatusCode");
+                                getStatusCodeMethod.setAccessible(true);
+                                Object statusCode = getStatusCodeMethod.invoke(retVal);
 
-                            Method valueMethod = statusCode.getClass().getMethod("value");
-                            valueMethod.setAccessible(true);
-                            Object statusCodeValue = valueMethod.invoke(statusCode);
-                            responseStatus = statusCodeValue.toString();
+                                Method valueMethod = statusCode.getClass().getMethod("value");
+                                valueMethod.setAccessible(true);
+                                Object statusCodeValue = valueMethod.invoke(statusCode);
+                                responseStatus = statusCodeValue.toString();
 
-                            Method getHeadersMethod = retVal.getClass().getMethod("getHeaders");
-                            getHeadersMethod.setAccessible(true);
-                            responseHeaders = getHeadersMethod.invoke(retVal);
+                                Method getHeadersMethod = retVal.getClass().getMethod("getHeaders");
+                                getHeadersMethod.setAccessible(true);
+                                responseHeaders = getHeadersMethod.invoke(retVal);
 
-                            Method getBodyMethod = retVal.getClass().getMethod("getBody");
-                            getBodyMethod.setAccessible(true);
-                            InputStream originalInputStream = (InputStream) getBodyMethod.invoke(retVal);
+                                Method getBodyMethod = retVal.getClass().getMethod("getBody");
+                                getBodyMethod.setAccessible(true);
+                                InputStream originalInputStream = (InputStream) getBodyMethod.invoke(retVal);
 
-                            Field cachedBodyField = retVal.getClass().getDeclaredField("cachedBody");
-                            cachedBodyField.setAccessible(true);
-                            byte[] responseBodyBytes = (byte[]) cachedBodyField.get(retVal);
+                                Field cachedBodyField = retVal.getClass().getDeclaredField("cachedBody");
+                                cachedBodyField.setAccessible(true);
+                                byte[] responseBodyBytes = (byte[]) cachedBodyField.get(retVal);
 
-                            // Convert the byte array to a String for logging/tracing
-                            Charset responseCharset = getResponseCharset(responseHeaders);
-                            if (responseCharset == null) {
-                                responseCharset = Charset.defaultCharset();
+                                // Convert the byte array to a String for logging/tracing
+                                Charset responseCharset = getResponseCharset(responseHeaders);
+                                if (responseCharset == null) {
+                                    responseCharset = Charset.defaultCharset();
+                                }
+                                responseBody = normalizeResponseBodyBytes(responseBodyBytes, responseHeaders, responseCharset);
+
+
                             }
-                            responseBody = normalizeResponseBodyBytes(responseBodyBytes, responseHeaders, responseCharset);
-
-
-                        }
-                    } catch (Exception e) {
-                        if (LoggerStatusContent.isErrorsOrDebug()) {
-                            System.err.println("Error processing ClientHttpResponse: " + e.getMessage());
+                        } catch (Exception e) {
+                            if (LoggerStatusContent.isErrorsOrDebug()) {
+                                System.err.println("Error processing ClientHttpResponse: " + e.getMessage());
+                            }
                         }
                     }
-                }
 
-                if (thrown != null) {
-                    errorCall = getaNullThrowable(thrown);
-                }
-                if (url != null && !url.contains("eureka/apps")) {
-                    sendMessageRequestUrl(
-                            UuidCreator.getTimeBased().toString(),
-                            ContextManager.getTraceId(),
-                            ContextManager.getSpanId(),
-                            dateStart,
-                            dateEnd,
-                            url,
-                            httpMethod,
-                            ReflectionUtils.objectToString(headers),
-                            body,
-                            responseStatus,
-                            ReflectionUtils.objectToString(responseHeaders),
-                            responseBody,
-                            errorCall,
-                            ContextManager.getMessageIdQueueNew(),
-                            serviceCallId
-                    );
+                    if (thrown != null) {
+                        errorCall = getaNullThrowable(thrown);
+                    }
+                    if (url != null && !url.contains("eureka/apps")) {
+                        sendMessageRequestUrl(
+                                UuidCreator.getTimeBased().toString(),
+                                ContextManager.getTraceId(),
+                                ContextManager.getSpanId(),
+                                dateStart,
+                                dateEnd,
+                                url,
+                                httpMethod,
+                                ReflectionUtils.objectToString(headers),
+                                body,
+                                responseStatus,
+                                ReflectionUtils.objectToString(responseHeaders),
+                                responseBody,
+                                errorCall,
+                                ContextManager.getMessageIdQueueNew(),
+                                serviceCallId
+                        );
+                    }
                 }
             }
-
             return retVal;
         }
 

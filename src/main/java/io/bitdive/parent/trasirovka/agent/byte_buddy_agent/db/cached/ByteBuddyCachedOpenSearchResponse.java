@@ -5,7 +5,10 @@ import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.agent.builder.ResettableClassFileTransformer;
 import net.bytebuddy.description.modifier.Visibility;
 import net.bytebuddy.implementation.MethodDelegation;
-import net.bytebuddy.implementation.bind.annotation.*;
+import net.bytebuddy.implementation.bind.annotation.Argument;
+import net.bytebuddy.implementation.bind.annotation.RuntimeType;
+import net.bytebuddy.implementation.bind.annotation.SuperCall;
+import net.bytebuddy.implementation.bind.annotation.This;
 import net.bytebuddy.matcher.ElementMatchers;
 
 import java.io.ByteArrayOutputStream;
@@ -19,6 +22,7 @@ public final class ByteBuddyCachedOpenSearchResponse {
 
     public static ResettableClassFileTransformer init(Instrumentation inst) {
         return new AgentBuilder.Default()
+                .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
                 .type(ElementMatchers.named("org.opensearch.client.Response"))
                 .transform((b, td, cl, m, sd) ->
                         b.defineField("cachedBody", byte[].class, Visibility.PUBLIC)

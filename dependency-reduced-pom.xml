@@ -4,7 +4,7 @@
   <groupId>io.bitdive</groupId>
     <artifactId>java-producer-parent</artifactId>
     <name>parent-producer</name>
-    <version>1.2.3</version>
+    <version>1.2.4</version>
     <description>library is a common module for the system for collecting profiling information</description>
     <url>bitdive.io</url>
     <developers>

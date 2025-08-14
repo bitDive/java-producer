@@ -18,11 +18,8 @@ import java.util.stream.Collectors;
 
 public class HttpsURLConnectionCustom {
 
-    private static boolean TRUST_ALL_MODE = false;
-
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-    ;
 
 
     public static ProfilingConfig requestConfigForService(ConfigForServiceDTO dto) {
@@ -35,11 +32,9 @@ public class HttpsURLConnectionCustom {
                                 (HttpsURLConnection) url.openConnection() :
                                 (HttpURLConnection) url.openConnection();
 
-                return doRequest(conn, dto, !TRUST_ALL_MODE);
-            } catch (Exception sslEx) {
-                TRUST_ALL_MODE = true;
-                HttpsURLConnection retry = (HttpsURLConnection) url.openConnection();
-                return doRequest(retry, dto, false);
+                return doRequest(conn, dto);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
             }
         } catch (AccessControlException e) {
             System.out.println("Error of read config from server bitDive " + endpoint + " Access Control Exception");
@@ -49,15 +44,15 @@ public class HttpsURLConnectionCustom {
         }
     }
 
-    private static ProfilingConfig doRequest(HttpURLConnection httpURLConnection, ConfigForServiceDTO dto, boolean strictTls) throws Exception {
+    private static ProfilingConfig doRequest(HttpURLConnection httpURLConnection, ConfigForServiceDTO dto) throws Exception {
 
 
         byte[] body = MAPPER.writeValueAsBytes(dto);
 
         if (httpURLConnection instanceof HttpsURLConnection) {
             HttpsURLConnection conn = (HttpsURLConnection) httpURLConnection;
-            SSLContext ctx = strictTls ? SSLContextCustomBitDive.strict() : SSLContextCustomBitDive.trustAll();
-            HostnameVerifier hv = strictTls ? HttpsURLConnection.getDefaultHostnameVerifier() : (h, s) -> true;
+            SSLContext ctx = SSLContextCustomBitDive.trustAll();
+            HostnameVerifier hv = (h, s) -> true;
 
             conn.setSSLSocketFactory(ctx.getSocketFactory());
             conn.setHostnameVerifier(hv);

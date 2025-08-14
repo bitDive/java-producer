@@ -7,6 +7,7 @@ import io.bitdive.parent.message_producer.LibraryLoggerConfig;
 import io.bitdive.parent.parserConfig.ConfigForServiceDTO;
 import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
+import io.bitdive.parent.utils.ByteBuddyConfigLoader;
 import io.bitdive.parent.utils.LibraryVersionBitDive;
 import org.springframework.context.ApplicationContextInitializer;
 import org.springframework.context.ConfigurableApplicationContext;
@@ -14,7 +15,6 @@ import org.springframework.core.env.ConfigurableEnvironment;
 
 import java.util.Arrays;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -40,21 +40,7 @@ public class ByteBuddyAgentInitializer implements ApplicationContextInitializer<
                 YamlParserConfig.setWork(false);
                 return;
             }
-
-            String moduleName = env.getProperty("bitdive.monitoring.moduleName");
-            String serviceName = env.getProperty("bitdive.monitoring.serviceName");
-            List<String> packedScanner = env.getProperty("bitdive.monitoring.packedScanner", List.class);
-
-            String serverUrl = env.getProperty("bitdive.monitoring.server-url");
-            String token = env.getProperty("bitdive.monitoring.token");
-
-            ConfigForServiceDTO configForServiceDTO = ConfigForServiceDTO.builder()
-                    .moduleName(moduleName)
-                    .serviceName(serviceName)
-                    .packedScanner(packedScanner)
-                    .serverUrl(serverUrl)
-                    .token(token)
-                    .build();
+            ConfigForServiceDTO configForServiceDTO = ByteBuddyConfigLoader.load();
 
             scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
                 Thread t = new Thread(r, "minute-task");
@@ -66,7 +52,7 @@ public class ByteBuddyAgentInitializer implements ApplicationContextInitializer<
 
             Runnable task = () -> {
                 try {
-                    if (initializeAgent) {
+                    if (initializeAgent || YamlParserConfig.isWork()) {
                         YamlParserConfig.setWork(false);
                         YamlParserConfig.loadConfig(configForServiceDTOFinal);
                         YamlParserConfig.getProfilingConfig().detectActualConfig(activeProfiles);
@@ -99,8 +85,6 @@ public class ByteBuddyAgentInitializer implements ApplicationContextInitializer<
                     YamlParserConfig.setWork(false);
                     return;
                 }
-
-
             }
 
             YamlParserConfig.getProfilingConfig().detectActualConfig(activeProfiles);

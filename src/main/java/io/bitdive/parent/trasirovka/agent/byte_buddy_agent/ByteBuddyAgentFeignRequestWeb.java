@@ -1,7 +1,6 @@
 package io.bitdive.parent.trasirovka.agent.byte_buddy_agent;
 
 import com.github.f4b6a3.uuid.UuidCreator;
-import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.ContextManager;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import io.bitdive.parent.trasirovka.agent.utils.ReflectionUtils;
@@ -33,6 +32,7 @@ public class ByteBuddyAgentFeignRequestWeb {
         try {
             Class<?> clientClass = Class.forName("feign.Client");
             return new AgentBuilder.Default()
+                    .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
                     .type(ElementMatchers.isSubTypeOf(clientClass)
                             .and(ElementMatchers.not(ElementMatchers.nameContains("loadbalancer")))
                     )
@@ -78,6 +78,7 @@ public class ByteBuddyAgentFeignRequestWeb {
             String errorCall = null;
             String serviceCallId = UuidCreator.getTimeBased().toString();
 
+            boolean successLogin = false;
 
             try {
                 Object request = args[0]; // The first argument is the request object
@@ -100,31 +101,34 @@ public class ByteBuddyAgentFeignRequestWeb {
                 charset = (Charset) charsetMethod.invoke(request);
                 Object requestTemplate = requestTemplateMethod.invoke(request);
 
-                // Modify the headers by adding custom headers
-                headers.put("x-BitDiv-custom-span-id", Collections.singletonList(ContextManager.getSpanId()));
-                headers.put("x-BitDiv-custom-parent-message-id", Collections.singletonList(ContextManager.getMessageIdQueueNew()));
-                headers.put("x-BitDiv-custom-service-call-id", Collections.singletonList(serviceCallId));
+                if (headers.get("x-BitDiv-custom-span-id") == null) {
+                    successLogin = true;
+                    // Modify the headers by adding custom headers
+                    headers.put("x-BitDiv-custom-span-id", Collections.singletonList(ContextManager.getSpanId()));
+                    headers.put("x-BitDiv-custom-parent-message-id", Collections.singletonList(ContextManager.getMessageIdQueueNew()));
+                    headers.put("x-BitDiv-custom-service-call-id", Collections.singletonList(serviceCallId));
 
-                // Recreate the request with modified headers
-                // Get the create method
-                Method requestCreateMethod = requestClass.getMethod("create",
-                        httpMethodEnum.getClass(), // HttpMethod enum class
-                        String.class,
-                        Map.class,
-                        byte[].class,
-                        Charset.class,
-                        requestTemplate.getClass());
+                    // Recreate the request with modified headers
+                    // Get the create method
+                    Method requestCreateMethod = requestClass.getMethod("create",
+                            httpMethodEnum.getClass(), // HttpMethod enum class
+                            String.class,
+                            Map.class,
+                            byte[].class,
+                            Charset.class,
+                            requestTemplate.getClass());
 
-                Object newRequest = requestCreateMethod.invoke(null,
-                        httpMethodEnum, // HttpMethod
-                        url,
-                        headers,
-                        body,
-                        charset,
-                        requestTemplate);
+                    Object newRequest = requestCreateMethod.invoke(null,
+                            httpMethodEnum, // HttpMethod
+                            url,
+                            headers,
+                            body,
+                            charset,
+                            requestTemplate);
 
-                // Replace the request argument with the new request
-                args[0] = newRequest;
+                    // Replace the request argument with the new request
+                    args[0] = newRequest;
+                }
             } catch (Exception e) {
                 if (LoggerStatusContent.isErrorsOrDebug()) {
                     System.err.println("Error modifying Feign Request: " + e.getMessage());
@@ -138,91 +142,92 @@ public class ByteBuddyAgentFeignRequestWeb {
                 thrown = t.getCause();
                 throw t.getCause();
             } finally {
-                dateEnd = OffsetDateTime.now();
+                if (successLogin) {
+                    dateEnd = OffsetDateTime.now();
 
-                try {
-                    // Extract response details if available
-                    if (retVal != null) {
-                        Class<?> responseClass = retVal.getClass();
+                    try {
+                        // Extract response details if available
+                        if (retVal != null) {
+                            Class<?> responseClass = retVal.getClass();
 
-                        Method statusMethod = responseClass.getMethod("status");
-                        Method responseHeadersMethod = responseClass.getMethod("headers");
-                        Method responseBodyMethod = responseClass.getMethod("body");
+                            Method statusMethod = responseClass.getMethod("status");
+                            Method responseHeadersMethod = responseClass.getMethod("headers");
+                            Method responseBodyMethod = responseClass.getMethod("body");
 
-                        responseStatus = String.valueOf(statusMethod.invoke(retVal));
-                        responseHeaders = (Map<String, Collection<String>>) responseHeadersMethod.invoke(retVal);
-                        Object responseBodyObject = responseBodyMethod.invoke(retVal);
+                            responseStatus = String.valueOf(statusMethod.invoke(retVal));
+                            responseHeaders = (Map<String, Collection<String>>) responseHeadersMethod.invoke(retVal);
+                            Object responseBodyObject = responseBodyMethod.invoke(retVal);
 
-                        // Handle response body via reflection
-                        if (responseBodyObject != null) {
-                            Class<?> responseBodyClass = responseBodyObject.getClass();
+                            // Handle response body via reflection
+                            if (responseBodyObject != null) {
+                                Class<?> responseBodyClass = responseBodyObject.getClass();
 
-                            // Obtain the InputStream from the response body
-                            Method asInputStreamMethod = responseBodyClass.getMethod("asInputStream");
-                            asInputStreamMethod.setAccessible(true);
-                            InputStream inputStream = (InputStream) asInputStreamMethod.invoke(responseBodyObject);
+                                // Obtain the InputStream from the response body
+                                Method asInputStreamMethod = responseBodyClass.getMethod("asInputStream");
+                                asInputStreamMethod.setAccessible(true);
+                                InputStream inputStream = (InputStream) asInputStreamMethod.invoke(responseBodyObject);
 
-                            // Read the InputStream into a byte array
-                            byte[] responseBodyBytes = IOUtils.toByteArray(inputStream);
+                                // Read the InputStream into a byte array
+                                byte[] responseBodyBytes = IOUtils.toByteArray(inputStream);
 
-                            // Close the original InputStream
-                            inputStream.close();
+                                // Close the original InputStream
+                                inputStream.close();
 
-                            // Convert the byte array to a String for tracing
-                            Charset responseCharset = getResponseCharset(responseHeaders);
-                            if (responseCharset == null) {
-                                responseCharset = Charset.defaultCharset();
+                                // Convert the byte array to a String for tracing
+                                Charset responseCharset = getResponseCharset(responseHeaders);
+                                if (responseCharset == null) {
+                                    responseCharset = Charset.defaultCharset();
+                                }
+                                responseBody = normalizeResponseBodyBytes(responseBodyBytes, responseHeaders, responseCharset);
+
+                                // Create a new response object with the new body
+                                Method toBuilderMethod = responseClass.getMethod("toBuilder");
+                                Object responseBuilder = toBuilderMethod.invoke(retVal);
+
+                                // Set the new body on the builder using body(byte[]) method
+                                Method bodyMethod = responseBuilder.getClass().getMethod("body", byte[].class);
+                                bodyMethod.invoke(responseBuilder, (Object) responseBodyBytes);
+
+                                // Build the new response
+                                Method buildMethod = responseBuilder.getClass().getMethod("build");
+                                Object newResponse = buildMethod.invoke(responseBuilder);
+
+                                // Replace retVal with newResponse
+                                retVal = newResponse;
                             }
-                            responseBody = normalizeResponseBodyBytes(responseBodyBytes, responseHeaders, responseCharset);
-
-                            // Create a new response object with the new body
-                            Method toBuilderMethod = responseClass.getMethod("toBuilder");
-                            Object responseBuilder = toBuilderMethod.invoke(retVal);
-
-                            // Set the new body on the builder using body(byte[]) method
-                            Method bodyMethod = responseBuilder.getClass().getMethod("body", byte[].class);
-                            bodyMethod.invoke(responseBuilder, (Object) responseBodyBytes);
-
-                            // Build the new response
-                            Method buildMethod = responseBuilder.getClass().getMethod("build");
-                            Object newResponse = buildMethod.invoke(responseBuilder);
-
-                            // Replace retVal with newResponse
-                            retVal = newResponse;
                         }
-                    }
 
-                    if (thrown != null) {
-                        errorCall = getaNullThrowable(thrown);
-                    }
+                        if (thrown != null) {
+                            errorCall = getaNullThrowable(thrown);
+                        }
 
-                    if (url != null && !url.contains("eureka/apps")) {
-                        // Call sendMessageRequestUrl with the collected data
-                        sendMessageRequestUrl(
-                                UuidCreator.getTimeBased().toString(),
-                                ContextManager.getTraceId(),
-                                ContextManager.getSpanId(),
-                                dateStart,
-                                dateEnd,
-                                url,
-                                httpMethod,
-                                ReflectionUtils.objectToString(headers),
-                                normalizeResponseBodyBytes(body, headers, charset),
-                                responseStatus,
-                                ReflectionUtils.objectToString(responseHeaders),
-                                responseBody,
-                                errorCall,
-                                ContextManager.getMessageIdQueueNew(),
-                                serviceCallId
-                        );
-                    }
-                } catch (Exception e) {
-                    if (LoggerStatusContent.isErrorsOrDebug()) {
-                        System.err.println("Error processing Feign Request/Response: " + e.getMessage());
+                        if (url != null && !url.contains("eureka/apps")) {
+                            // Call sendMessageRequestUrl with the collected data
+                            sendMessageRequestUrl(
+                                    UuidCreator.getTimeBased().toString(),
+                                    ContextManager.getTraceId(),
+                                    ContextManager.getSpanId(),
+                                    dateStart,
+                                    dateEnd,
+                                    url,
+                                    httpMethod,
+                                    ReflectionUtils.objectToString(headers),
+                                    normalizeResponseBodyBytes(body, headers, charset),
+                                    responseStatus,
+                                    ReflectionUtils.objectToString(responseHeaders),
+                                    responseBody,
+                                    errorCall,
+                                    ContextManager.getMessageIdQueueNew(),
+                                    serviceCallId
+                            );
+                        }
+                    } catch (Exception e) {
+                        if (LoggerStatusContent.isErrorsOrDebug()) {
+                            System.err.println("Error processing Feign Request/Response: " + e.getMessage());
+                        }
                     }
                 }
             }
-
             return retVal;
         }
 

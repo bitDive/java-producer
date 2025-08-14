@@ -1,6 +1,5 @@
 package io.bitdive.parent.trasirovka.agent.byte_buddy_agent;
 
-import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.ContextManager;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import net.bytebuddy.agent.builder.AgentBuilder;
@@ -17,6 +16,7 @@ import static io.bitdive.parent.message_producer.MessageService.sendMessageWebRe
 public class ByteBuddyAgentCatalinaResponse {
     public static ResettableClassFileTransformer init(Instrumentation instrumentation) {
         return new AgentBuilder.Default()
+                .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
                 .type(ElementMatchers.named("org.apache.catalina.connector.Request"))
                 .transform((builder, typeDescription, classLoader, module, dd) ->
                         builder.visit(Advice.to(CatalinaResponseInterceptor.class)

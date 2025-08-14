@@ -22,6 +22,7 @@ public final class ByteBuddyCachedOpenSearchReqest {
 
     public static ResettableClassFileTransformer init(Instrumentation inst) {
         return new AgentBuilder.Default()
+                .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
                 .type(ElementMatchers.named("org.opensearch.client.Request"))
                 .transform((b, td, cl, m, sd) ->
                         b.defineField("cachedBody", byte[].class, Visibility.PUBLIC)
