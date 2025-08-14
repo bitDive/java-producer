@@ -56,6 +56,14 @@ public class ByteBuddyAgentInitializer implements ApplicationContextInitializer<
                         YamlParserConfig.setWork(false);
                         YamlParserConfig.loadConfig(configForServiceDTOFinal);
                         YamlParserConfig.getProfilingConfig().detectActualConfig(activeProfiles);
+
+                        if (activeProfiles.length > 0) {
+                            YamlParserConfig.getProfilingConfig().getApplication().setModuleName(
+                                    YamlParserConfig.getProfilingConfig().getApplication().getModuleName() + "-" +
+                                            String.join("-", activeProfiles)
+                            );
+                        }
+
                         LibraryLoggerConfig.init();
                         GenerateJvmMetrics.init();
                         if (LoggerStatusContent.isDebug()) {

@@ -6,7 +6,7 @@
 
     <groupId>io.bitdive</groupId>
     <artifactId>java-producer-parent</artifactId>
-    <version>1.2.4</version>
+    <version>1.2.5</version>
     <name>parent-producer</name>
 
     <properties>
