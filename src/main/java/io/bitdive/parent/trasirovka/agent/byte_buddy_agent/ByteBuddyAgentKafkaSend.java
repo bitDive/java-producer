@@ -1,7 +1,6 @@
 package io.bitdive.parent.trasirovka.agent.byte_buddy_agent;
 
 import com.github.f4b6a3.uuid.UuidCreator;
-import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.ContextManager;
 import io.bitdive.parent.trasirovka.agent.utils.KafkaAgentStorage;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
@@ -134,7 +133,10 @@ public class ByteBuddyAgentKafkaSend {
                         context.timestampStart,
                         OffsetDateTime.now(),
                         context.parentMessageId,
-                        errorMessage
+                        errorMessage,
+                        ContextManager.getMethodInpointName(),
+                        ContextManager.getMessageInpointId(),
+                        ContextManager.getClassInpointName()
                 );
             }
         }

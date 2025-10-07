@@ -12,6 +12,11 @@ public enum MessageTypeEnum {
     KAFKA_SEND,
     KAFKA_CONSUMER,
 
+    STOMP_SEND,
+    STOMP_CONSUMER,
+
+    RAW_WS_CONSUMER,
+
     CASSANDRA_DB_START,
     CASSANDRA_DB_END,
 

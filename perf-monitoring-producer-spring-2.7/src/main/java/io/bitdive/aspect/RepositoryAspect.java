@@ -10,7 +10,6 @@ import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.reflect.MethodSignature;
-import org.springframework.aop.support.AopUtils;
 import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Repository;
 
@@ -68,7 +67,10 @@ public class RepositoryAspect {
                     ContextManager.getParentIdMessageIdQueue(),
                     false,
                     ReflectionUtils.objectToString(paramConvert(joinPoint.getArgs(), methodSig.getMethod())),
-                    MethodTypeEnum.DB.toString(), "", ""
+                    MethodTypeEnum.DB.toString(), "", "",
+                    ContextManager.getMethodInpointName(),
+                    ContextManager.getMessageInpointId(),
+                    ContextManager.getClassInpointName()
             );
 
             ContextManager.setMethodCallContextQueue(UUIDMessage);

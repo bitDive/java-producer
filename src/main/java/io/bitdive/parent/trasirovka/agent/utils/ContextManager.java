@@ -33,6 +33,11 @@ public class ContextManager {
         traceMethodContext.setServiceCallId(value.getServiceCallId());
         traceMethodContext.setParentIdForRest(value.getParentIdForRest());
 
+        traceMethodContext.setClassInpointName(value.getClassInpointName());
+        traceMethodContext.setMethodInpointName(value.getMethodInpointName());
+        traceMethodContext.setMessageInpointId(value.getMessageInpointId());
+
+
         traceMethodContext.setUrlStart(value.getUrlStart());
         traceMethodContext.setStartMessageId(value.getStartMessageId());
         if (!value.getMethodCallContextQueue().isEmpty()) {
@@ -40,6 +45,33 @@ public class ContextManager {
         }
         contextThreadLocal.set(traceMethodContext);
     }
+
+
+    public static String getClassInpointName() {
+        return getContestThreadLocalOptional().map(TraceMethodContext::getClassInpointName).orElse(null);
+    }
+
+    public static String getMethodInpointName() {
+        return getContestThreadLocalOptional().map(TraceMethodContext::getMethodInpointName).orElse(null);
+    }
+
+    public static String getMessageInpointId() {
+        return getContestThreadLocalOptional().map(TraceMethodContext::getMessageInpointId).orElse(null);
+    }
+
+
+    public static void setClassInpointName(String classInpointName) {
+        getContestThreadLocalOptional().ifPresent(traceMethodContext -> traceMethodContext.setClassInpointName(classInpointName));
+    }
+
+    public static void setMethodInpointName(String methodInpointName) {
+        getContestThreadLocalOptional().ifPresent(traceMethodContext -> traceMethodContext.setMethodInpointName(methodInpointName));
+    }
+
+    public static void setMessageInpointId(String messageInpointId) {
+        getContestThreadLocalOptional().ifPresent(traceMethodContext -> traceMethodContext.setMessageInpointId(messageInpointId));
+    }
+
 
     public static String getMessageStart() {
         return getContestThreadLocalOptional().map(TraceMethodContext::getStartMessageId).orElse("");

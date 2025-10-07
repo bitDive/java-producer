@@ -33,6 +33,10 @@ public class SchedulerAspect {
 
         try {
 
+            ContextManager.setMethodInpointName(methodSig.getName());
+            ContextManager.setClassInpointName(methodSig.getDeclaringTypeName());
+            ContextManager.setMessageInpointId(UUIDMessage);
+
             sendMessageStart(
                     UUIDMessage,
                     methodSig.getDeclaringTypeName(),
@@ -43,7 +47,10 @@ public class SchedulerAspect {
                     ContextManager.getParentIdMessageIdQueue(),
                     true,
                     ReflectionUtils.objectToString(paramConvert(joinPoint.getArgs(), methodSig.getMethod())),
-                    MethodTypeEnum.SCHEDULER.toString(), "", ""
+                    MethodTypeEnum.SCHEDULER.toString(), "", "",
+                    ContextManager.getMethodInpointName(),
+                    ContextManager.getMessageInpointId(),
+                    ContextManager.getClassInpointName()
             );
 
             ContextManager.setMethodCallContextQueue(UUIDMessage);

@@ -107,14 +107,15 @@ public class MessageService {
                                           MessageTypeEnum messageTypeEnum) {
 
         sendMessage(buildMessage(
-                messageTypeEnum.name(),                                // 0
-                messageId,                                             // 1
-                traceId,                                               // 2
-                spanId,                                                // 3
-                Optional.ofNullable(soapResponseBody).orElse(""),      // 5
-                dateEnd.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),// 6
-                Optional.ofNullable(error).orElse(""),                 // 7
-                YamlParserConfig.getLibraryVersion()                   // 8
+                messageTypeEnum.name(),
+                messageId,
+                traceId,
+                spanId,
+                Optional.ofNullable(soapResponseBody).orElse(""),
+                dateEnd.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                Optional.ofNullable(error).orElse(""),
+                YamlParserConfig.getLibraryVersion()
+
         ));
     }
 
@@ -126,7 +127,10 @@ public class MessageService {
                                             String soapRequestBody,
                                             OffsetDateTime dateStart,
                                             String parentMessageId,
-                                            MessageTypeEnum messageTypeEnum) {
+                                            MessageTypeEnum messageTypeEnum,
+                                            String methodInpointName,
+                                            String messageInpointId,
+                                            String classInpointName) {
 
         sendMessage(buildMessage(
                 messageTypeEnum.name(),                    // 0  – тип (SOAP_START / SOAP_END ...)
@@ -140,14 +144,20 @@ public class MessageService {
                 parentMessageId,                           // 7
                 YamlParserConfig.getLibraryVersion(),      // 8
                 YamlParserConfig.getProfilingConfig().getApplication().getModuleName(),
-                YamlParserConfig.getProfilingConfig().getApplication().getServiceName()
+                YamlParserConfig.getProfilingConfig().getApplication().getServiceName(),
+                methodInpointName,
+                messageInpointId,
+                classInpointName
         ));
     }
 
     public static void sendMessageStart(String messageId,
                                         String className, String methodName, String traceId, String spanId,
                                         OffsetDateTime dateStart, String parentMessage, boolean inPointFlag,
-                                        String args, String operationType, String urlRequest, String serviceCallId) {
+                                        String args, String operationType, String urlRequest, String serviceCallId,
+                                        String methodInpointName,
+                                        String messageInpointId,
+                                        String classInpointName) {
         sendMessage(buildMessage(
                 MessageTypeEnum.STAR.name(),
                 YamlParserConfig.getProfilingConfig().getApplication().getModuleName(),
@@ -159,20 +169,26 @@ public class MessageService {
                 spanId,
                 dateStart.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
                 parentMessage,
-                        String.valueOf(inPointFlag),
+                String.valueOf(inPointFlag),
                 args,
                 operationType,
-                        (urlRequest != null ? sanitizeUrl(urlRequest) : ""),
+                (urlRequest != null ? sanitizeUrl(urlRequest) : ""),
                 YamlParserConfig.getLibraryVersion(),
                 YamlParserConfig.getUUIDService(),
-                serviceCallId
+                serviceCallId,
+                methodInpointName,
+                messageInpointId,
+                classInpointName
                 ));
     }
 
     public static void sendMessageKafkaConsumer(String messageId,
                                                 String className, String methodName, String traceId, String spanId,
                                                 OffsetDateTime dateStart, OffsetDateTime dateEnd, boolean inPointFlag,
-                                                String args, String topicName, String groupName, String ServerName, String errorMessage) {
+                                                String args, String topicName, String groupName, String ServerName, String errorMessage,
+                                                String methodInpointName,
+                                                String messageInpointId,
+                                                String classInpointName) {
         sendMessage(buildMessage(
                 MessageTypeEnum.KAFKA_CONSUMER.name(),
                 YamlParserConfig.getProfilingConfig().getApplication().getModuleName(),
@@ -190,7 +206,10 @@ public class MessageService {
                 groupName,
                 ServerName,
                 errorMessage,
-                YamlParserConfig.getLibraryVersion()
+                YamlParserConfig.getLibraryVersion(),
+                methodInpointName,
+                messageInpointId,
+                classInpointName
         ));
     }
 
@@ -237,7 +256,10 @@ public class MessageService {
     public static void sendMessageKafkaSend(String messageId, String spanId, String traceId,
                                             String topicName, String messageBody, String serviceName,
                                             OffsetDateTime dateStart, OffsetDateTime dateEnd, String parentMessageId,
-                                            String errorMessage
+                                            String errorMessage,
+                                            String methodInpointName,
+                                            String messageInpointId,
+                                            String classInpointName
     ) {
         sendMessage(buildMessage(
                 MessageTypeEnum.KAFKA_SEND.name(),
@@ -251,7 +273,101 @@ public class MessageService {
                 dateEnd.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
                 parentMessageId,
                 YamlParserConfig.getLibraryVersion(),
-                errorMessage
+                errorMessage,
+                methodInpointName,
+                messageInpointId,
+                classInpointName
+        ));
+    }
+
+    public static void sendMessageStompSend(String messageId, String spanId, String traceId,
+                                            String className, String methodName,
+                                            String destination, String args,
+                                            OffsetDateTime dateStart, OffsetDateTime dateEnd,
+                                            String parentMessageId, String errorMessage,
+                                            String methodInpointName,
+                                            String messageInpointId,
+                                            String classInpointName) {
+        sendMessage(buildMessage(
+                MessageTypeEnum.STOMP_SEND.name(),
+                YamlParserConfig.getProfilingConfig().getApplication().getModuleName(),
+                YamlParserConfig.getProfilingConfig().getApplication().getServiceName(),
+                messageId,
+                className,
+                methodName,
+                traceId,
+                spanId,
+                dateStart.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                dateEnd.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                args,
+                destination,
+                errorMessage,
+                parentMessageId,
+                YamlParserConfig.getLibraryVersion(),
+                YamlParserConfig.getUUIDService(),
+                methodInpointName,
+                messageInpointId,
+                classInpointName
+        ));
+    }
+
+    public static void sendMessageStompConsumer(String messageId,
+                                                String className, String methodName, String traceId, String spanId,
+                                                OffsetDateTime dateStart, OffsetDateTime dateEnd,
+                                                String destination, String args, String errorMessage, boolean inPointFlag,
+                                                String methodInpointName,
+                                                String messageInpointId,
+                                                String classInpointName) {
+        sendMessage(buildMessage(
+                MessageTypeEnum.STOMP_CONSUMER.name(),
+                YamlParserConfig.getProfilingConfig().getApplication().getModuleName(),
+                YamlParserConfig.getProfilingConfig().getApplication().getServiceName(),
+                messageId,
+                className,
+                methodName,
+                traceId,
+                spanId,
+                dateStart.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                dateEnd.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                Boolean.toString(inPointFlag),
+                args,
+                destination,
+                errorMessage,
+                YamlParserConfig.getLibraryVersion(),
+                YamlParserConfig.getUUIDService(),
+                methodInpointName,
+                messageInpointId,
+                classInpointName
+        ));
+    }
+
+    public static void sendMessageRawWsConsumer(String messageId,
+                                                String className, String methodName, String traceId, String spanId,
+                                                OffsetDateTime dateStart, OffsetDateTime dateEnd,
+                                                String destination, String args, String errorMessage, boolean inPointFlag,
+                                                String methodInpointName,
+                                                String messageInpointId,
+                                                String classInpointName) {
+        sendMessage(buildMessage(
+                MessageTypeEnum.RAW_WS_CONSUMER.name(),
+                YamlParserConfig.getProfilingConfig().getApplication().getModuleName(),
+                YamlParserConfig.getProfilingConfig().getApplication().getServiceName(),
+                messageId,
+                className,
+                methodName,
+                traceId,
+                spanId,
+                dateStart.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                dateEnd.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                Boolean.toString(inPointFlag),
+                args,
+                destination,
+                errorMessage,
+                YamlParserConfig.getLibraryVersion(),
+                YamlParserConfig.getUUIDService(),
+                methodInpointName,
+                messageInpointId,
+                classInpointName
         ));
     }
 

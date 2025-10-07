@@ -37,15 +37,11 @@ public class CallableStatementParser {
         }
 
         try {
-            Field psField = findFieldRecursively(stmt.getClass(), "preparedSQL");
-            if (psField == null) {
-                return null;
-            }
-            psField.setAccessible(true);
+            Object sqlObj = getObjectMSSQL(stmt, "preparedSQL");
 
-            Object sqlObj = psField.get(stmt);
             if (sqlObj == null) {
-                return null;
+                sqlObj = getObjectMSSQL(stmt, "userSQL");
+                if (sqlObj == null) return null;
             }
 
             String sqlString = sqlObj.toString();
@@ -54,6 +50,17 @@ public class CallableStatementParser {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private static Object getObjectMSSQL(CallableStatement stmt, String fieldName) throws IllegalAccessException {
+        Field psField = findFieldRecursively(stmt.getClass(), fieldName);
+        if (psField == null) {
+            return null;
+        }
+        psField.setAccessible(true);
+
+        Object sqlObj = psField.get(stmt);
+        return sqlObj;
     }
 
     private static Field findFieldRecursively(Class<?> clazz, String fieldName) {

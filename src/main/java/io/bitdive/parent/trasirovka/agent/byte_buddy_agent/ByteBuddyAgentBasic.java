@@ -69,14 +69,22 @@ public class ByteBuddyAgentBasic {
         return matcher;
     }
 
+    private static ElementMatcher.Junction<TypeDescription> getWebSocketHandlerExclusion() {
+        return not(hasSuperType(named("org.springframework.web.socket.WebSocketHandler")))
+                .and(not(hasSuperType(named("org.springframework.web.socket.handler.AbstractWebSocketHandler"))))
+                .and(not(hasSuperType(named("org.springframework.web.socket.handler.TextWebSocketHandler"))));
+    }
+
     public static ResettableClassFileTransformer init(Instrumentation instrumentation) {
         ElementMatcher.Junction<TypeDescription> monitoredTypes =
                 getApplicationPackedScanner(
                         YamlParserConfig.getProfilingConfig().getApplication().getPackedScanner())
                         .and(getSpringComponentMatcher())
+                        .and(getWebSocketHandlerExclusion())
                         .and(not(isEnum()))
                         .and(not(isAnnotatedWith(named("io.bitdive.parent.anotations.NotMonitoring"))))
                         .and(not(isAnnotatedWith(nameContains("org.springframework.data."))))
+                        .and(not(hasSuperType(named("org.springframework.messaging.core.AbstractMessageSendingTemplate"))))
                         .and(not(nameEndsWith("Configuration")))
                         .and(not(nameEndsWith("RefreshScope")))
                         .and(not(nameEndsWith("ConfigurationProperties")))
@@ -98,11 +106,14 @@ public class ByteBuddyAgentBasic {
                                                 .and(not(isAnnotatedWith(nameEndsWith("ExceptionHandler"))))
                                                 .and(not(isAnnotatedWith(named("org.springframework.scheduling.annotation.Scheduled"))))
                                                 .and(not(isAnnotatedWith(named("org.springframework.kafka.annotation.KafkaListener"))))
+                                                .and(not(isAnnotatedWith(named("org.springframework.messaging.handler.annotation.MessageMapping"))))
+                                                .and(not(isAnnotatedWith(named("org.springframework.messaging.handler.annotation.SendTo"))))
                                                 .and(not(nameMatches(".*\\$.*")))
                                                 .and(not(isSynthetic()))
                                                 .and(not(isDeclaredBy(Object.class)))
                                                 .and(not(isDeclaredBy(Enum.class)))
                                                 .and(not(isAnnotatedWith(nameEndsWith("PostConstruct"))))
+
                                 )
                                 // Вместо Advice.to(...) используем MethodDelegation.to(...)
                                 .intercept(MethodDelegation.to(BasicInterceptor.class))
@@ -161,6 +172,11 @@ public class ByteBuddyAgentBasic {
                     UUIDMessage = UuidCreator.getTimeBased().toString();
                 }
 
+                if (flagNewSpan.getVal()) {
+                    ContextManager.setMethodInpointName(method.getName());
+                    ContextManager.setClassInpointName(method.getDeclaringClass().getName());
+                    ContextManager.setMessageInpointId(UUIDMessage);
+                }
 
                 sendMessageStart(
                         UUIDMessage,
@@ -174,7 +190,10 @@ public class ByteBuddyAgentBasic {
                         ReflectionUtils.objectToString(paramConvert(args, method)),
                         flagNewSpan.getKey().toString(),
                         urlVal,
-                        serviceCallId
+                        serviceCallId,
+                        ContextManager.getMethodInpointName(),
+                        ContextManager.getMessageInpointId(),
+                        ContextManager.getClassInpointName()
                 );
 
                 ContextManager.setMethodCallContextQueue(UUIDMessage);

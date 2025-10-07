@@ -87,6 +87,10 @@ public class KafkaListenerAspect {
             thrown = t;
             throw t;
         } finally {
+            ContextManager.setClassInpointName(methodSig.getDeclaringTypeName());
+            ContextManager.setMethodInpointName(methodSig.getName());
+            ContextManager.setMessageInpointId(uuidMessage);
+
             sendMessageKafkaConsumer(
                     uuidMessage,
                     methodSig.getDeclaringTypeName(),
@@ -100,7 +104,10 @@ public class KafkaListenerAspect {
                     topicName,
                     groupName,
                     KafkaAgentStorage.getBootstrap(),
-                    getaNullThrowable(thrown)
+                    getaNullThrowable(thrown),
+                    ContextManager.getMethodInpointName(),
+                    ContextManager.getMessageInpointId(),
+                    ContextManager.getClassInpointName()
             );
         }
         return retVal;

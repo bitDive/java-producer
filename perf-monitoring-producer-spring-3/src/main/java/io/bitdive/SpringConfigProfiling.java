@@ -37,5 +37,19 @@ public class SpringConfigProfiling {
         return new KafkaListenerAspect();
     }
 
+    @Bean
+    @ConditionalOnClass(name = "org.springframework.messaging.handler.annotation.MessageMapping")
+    @Conditional(YamlParserCondition.class)
+    public StompMessageMappingAspect stompMessageMappingAspect() {
+        return new StompMessageMappingAspect();
+    }
+
+    @Bean
+    @ConditionalOnClass(name = "org.springframework.messaging.handler.annotation.SendTo")
+    @Conditional(YamlParserCondition.class)
+    public StompSendToAspect stompSendToAspect() {
+        return new StompSendToAspect();
+    }
+
 
 }

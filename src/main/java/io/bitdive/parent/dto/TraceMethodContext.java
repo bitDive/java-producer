@@ -29,4 +29,9 @@ public class TraceMethodContext {
 
     private String startMessageId;
     private String urlStart;
+
+
+    private String classInpointName;
+    private String methodInpointName;
+    private String messageInpointId;
 }

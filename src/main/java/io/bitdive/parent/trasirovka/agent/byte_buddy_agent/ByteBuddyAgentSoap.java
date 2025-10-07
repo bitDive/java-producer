@@ -1,7 +1,6 @@
 package io.bitdive.parent.trasirovka.agent.byte_buddy_agent;
 
 import com.github.f4b6a3.uuid.UuidCreator;
-import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.*;
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.agent.builder.ResettableClassFileTransformer;
@@ -17,7 +16,8 @@ import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 
-import static io.bitdive.parent.message_producer.MessageService.*;
+import static io.bitdive.parent.message_producer.MessageService.sendMessageSOAPEnd;
+import static io.bitdive.parent.message_producer.MessageService.sendMessageSOAPStart;
 
 public class ByteBuddyAgentSoap {
 
@@ -96,7 +96,10 @@ public class ByteBuddyAgentSoap {
                         soapRequest,
                         OffsetDateTime.now(),
                         ContextManager.getMessageIdQueueNew(),
-                        MessageTypeEnum.SOAP_START);
+                        MessageTypeEnum.SOAP_START,
+                        ContextManager.getMethodInpointName(),
+                        ContextManager.getMessageInpointId(),
+                        ContextManager.getClassInpointName());
             }
             return ctx;
         }
@@ -171,7 +174,10 @@ public class ByteBuddyAgentSoap {
                         ReflectionUtils.objectToString(request),
                         OffsetDateTime.now(),
                         ContextManager.getMessageIdQueueNew(),
-                        MessageTypeEnum.SOAP_START);
+                        MessageTypeEnum.SOAP_START,
+                        ContextManager.getMethodInpointName(),
+                        ContextManager.getMessageInpointId(),
+                        ContextManager.getClassInpointName());
             }
             return ctx;
         }
@@ -255,7 +261,10 @@ public class ByteBuddyAgentSoap {
                         endpoint, operation, soapRequest,
                         OffsetDateTime.now(),
                         ContextManager.getMessageIdQueueNew(),
-                        MessageTypeEnum.SOAP_START);
+                        MessageTypeEnum.SOAP_START,
+                        ContextManager.getMethodInpointName(),
+                        ContextManager.getMessageInpointId(),
+                        ContextManager.getClassInpointName());
             }
             return ctx;
         }
