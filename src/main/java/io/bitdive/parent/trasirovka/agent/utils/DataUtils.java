@@ -8,17 +8,32 @@ import io.bitdive.parent.parserConfig.YamlParserConfig;
 import org.apache.commons.lang3.ObjectUtils;
 
 import java.lang.reflect.Method;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.*;
-
-import static io.bitdive.parent.trasirovka.agent.utils.ReflectionUtils.SENSITIVE_KEYWORDS;
 
 public class DataUtils {
 
     public static final Set<String> SENSITIVE_KEYWORDS = new HashSet<>(Arrays.asList(
             "password", "pass", "secret", "token", "key", "apikey", "auth", "credential"
     ));
+
+    /**
+     * Fast check if className represents a file-related class.
+     * Optimized to reduce string operations.
+     */
+    private static boolean isFileClass(String className) {
+        // Check for MultipartFile (most common - Spring)
+        if (className.indexOf("MultipartFile") != -1) return true;
+
+        // Check for FileItem (Apache Commons FileUpload)
+        if (className.indexOf("FileItem") != -1) return true;
+
+        // Check for Part (Servlet API) - be specific to avoid false positives like "Department"
+        if (className.indexOf(".Part") != -1 || className.endsWith("Part")) {
+            return className.contains("servlet") || className.contains("jakarta");
+        }
+
+        return false;
+    }
 
     public static String getaNullThrowable(Throwable thrown) {
         if (thrown == null) {
@@ -95,8 +110,28 @@ public class DataUtils {
                 if (notMonitoringClass != null) {
                     bufVal = notMonitoringClass.value();
                 } else {
-                    if (objectClass.getName().contains("java.util.stream.")) {
+                    String className = objectClass.getName();
+                    // Check for stream first (most common special case)
+                    if (className.contains("java.util.stream.")) {
                         bufVal = "[stream]";
+                    }
+                    // Check for file-related classes (optimize with indexOf instead of multiple contains)
+                    else if (isFileClass(className)) {
+                        bufVal = objectClass.isArray() ? "[file array]" : "[file]";
+                    }
+                    // Check collections (only if it's actually a Collection)
+                    else if (object instanceof Collection) {
+                        Collection<?> collection = (Collection<?>) object;
+                        if (!collection.isEmpty()) {
+                            Object firstElement = collection.iterator().next();
+                            if (firstElement != null && isFileClass(firstElement.getClass().getName())) {
+                                bufVal = "[file list]";
+                            } else {
+                                bufVal = object;
+                            }
+                        } else {
+                            bufVal = object;
+                        }
                     } else {
                         bufVal = object;
                     }

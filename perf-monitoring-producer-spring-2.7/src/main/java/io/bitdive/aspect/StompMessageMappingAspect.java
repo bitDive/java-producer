@@ -48,6 +48,9 @@ public class StompMessageMappingAspect {
         }
 
         ContextManager.setMethodCallContextQueue(uuidMessage);
+        ContextManager.setClassInpointName(methodSig.getDeclaringTypeName());
+        ContextManager.setMethodInpointName(methodSig.getName());
+        ContextManager.setMessageInpointId(uuidMessage);
         Object retVal;
         try {
             retVal = joinPoint.proceed();
@@ -56,9 +59,7 @@ public class StompMessageMappingAspect {
             throw t;
         } finally {
             String destination = cachedInfo.getDestination();
-            ContextManager.setClassInpointName(methodSig.getDeclaringTypeName());
-            ContextManager.setMethodInpointName(methodSig.getName());
-            ContextManager.setMessageInpointId(uuidMessage);
+
             sendMessageStompConsumer(
                     uuidMessage,
                     methodSig.getDeclaringTypeName(),

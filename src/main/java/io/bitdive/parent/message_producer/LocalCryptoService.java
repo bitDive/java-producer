@@ -54,14 +54,13 @@ public class LocalCryptoService {
         return Pair.createPair(pairSecretKey.getKey(), Base64.getEncoder().encodeToString(combined));
     }
 
-    public static Pair<Integer, String> sign(String encryptedData) throws Exception {
+    public static Pair<Integer, byte[]> sign(byte[] encryptedData) throws Exception {
         if (pairPrivateKey.getVal() == null) {
             Thread.sleep(1000);
         }
         Signature signature = Signature.getInstance("SHA256withECDSA");
         signature.initSign(pairPrivateKey.getVal());
-        signature.update(encryptedData.getBytes(StandardCharsets.UTF_8));
-        byte[] signatureBytes = signature.sign();
-        return Pair.createPair(pairPrivateKey.getKey(), Base64.getEncoder().encodeToString(signatureBytes));
+        signature.update(encryptedData);
+        return Pair.createPair(pairPrivateKey.getKey(), signature.sign());
     }
 }

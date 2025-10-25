@@ -6,6 +6,7 @@ import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.ContextManager;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import io.bitdive.parent.trasirovka.agent.utils.ReflectionUtils;
+import io.bitdive.parent.trasirovka.agent.utils.RequestBodyCollector;
 import io.bitdive.parent.utils.MethodTypeEnum;
 import io.bitdive.parent.utils.Pair;
 import io.bitdive.parent.utils.UtilsDataConvert;
@@ -23,6 +24,8 @@ import net.bytebuddy.matcher.ElementMatchers;
 
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Method;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
@@ -178,23 +181,109 @@ public class ByteBuddyAgentBasic {
                     ContextManager.setMessageInpointId(UUIDMessage);
                 }
 
-                sendMessageStart(
-                        UUIDMessage,
-                        method.getDeclaringClass().getName(),
-                        method.getName(),
-                        ContextManager.getTraceId(),
-                        ContextManager.getSpanId(),
-                        OffsetDateTime.now(),
-                        ContextManager.getParentIdMessageIdQueue(),
-                        flagNewSpan.getVal(),
-                        ReflectionUtils.objectToString(paramConvert(args, method)),
-                        flagNewSpan.getKey().toString(),
-                        urlVal,
-                        serviceCallId,
-                        ContextManager.getMethodInpointName(),
-                        ContextManager.getMessageInpointId(),
-                        ContextManager.getClassInpointName()
-                );
+                // Build args and optionally REST extras
+                String startArgs = ReflectionUtils.objectToString(paramConvert(args, method));
+                boolean isRestMethod = MethodTypeEnum.getListWebMethodType().contains(flagNewSpan.getKey());
+                if (flagNewSpan.getVal() && isRestMethod) {
+
+                    java.util.Map<String, java.util.List<String>> headers = ContextManager.getRequestHeaders();
+
+                    // Try to get body from ContextManager, if not available get from RequestBodyCollector
+                    byte[] bodyBytes = ContextManager.getRequestBodyBytes();
+                    if (bodyBytes == null || bodyBytes.length == 0) {
+                        // Body not yet saved to ContextManager, get it from collector and save
+                        bodyBytes = RequestBodyCollector.getBytes();
+                        if (bodyBytes != null && bodyBytes.length > 0) {
+                            ContextManager.setRequestBodyBytes(bodyBytes);
+                        }
+                    }
+
+                    String headersStr = headers != null ? ReflectionUtils.objectToString(headers) : null;
+                    String bodyStr = null;
+                    try {
+                        if (bodyBytes != null && bodyBytes.length > 0) {
+                            // Check if this is a file upload based on Content-Type
+                            boolean isFile = false;
+                            if (headers != null) {
+                                java.util.List<String> contentTypes = headers.get("content-type");
+                                if (contentTypes == null) contentTypes = headers.get("Content-Type");
+                                if (contentTypes != null && !contentTypes.isEmpty()) {
+                                    String contentType = contentTypes.get(0).toLowerCase();
+                                    isFile = contentType.contains("multipart/form-data")
+                                            || contentType.contains("application/octet-stream")
+                                            || contentType.contains("image/")
+                                            || contentType.contains("video/")
+                                            || contentType.contains("audio/")
+                                            || contentType.contains("application/pdf")
+                                            || contentType.contains("application/zip")
+                                            || contentType.contains("application/x-")
+                                            || contentType.contains("font/");
+                                }
+                            }
+
+                            // Also check by size - if > 1MB, likely a file
+                            if (bodyBytes.length > 1024 * 1024) {
+                                isFile = true;
+                            }
+
+                            if (isFile) {
+                                bodyStr = "[file send]";
+
+                            } else {
+                                Charset bodyCharset = StandardCharsets.UTF_8;
+                                bodyStr = new String(bodyBytes, bodyCharset);
+
+                            }
+                        }
+                    } catch (Exception e) {
+                        if (io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent.isErrorsOrDebug()) {
+                            System.err.println("ByteBuddyAgentBasic: error converting body: " + e.getMessage());
+                        }
+                    }
+
+                    sendMessageStart(
+                            UUIDMessage,
+                            method.getDeclaringClass().getName(),
+                            method.getName(),
+                            ContextManager.getTraceId(),
+                            ContextManager.getSpanId(),
+                            OffsetDateTime.now(),
+                            ContextManager.getParentIdMessageIdQueue(),
+                            flagNewSpan.getVal(),
+                            startArgs,
+                            flagNewSpan.getKey().toString(),
+                            urlVal,
+                            serviceCallId,
+                            ContextManager.getMethodInpointName(),
+                            ContextManager.getMessageInpointId(),
+                            ContextManager.getClassInpointName(),
+                            headersStr,
+                            bodyStr
+                    );
+
+                    ContextManager.setRequestHeaders(null);
+                    ContextManager.setRequestBodyBytes(null);
+                    RequestBodyCollector.reset();
+
+                } else {
+                    sendMessageStart(
+                            UUIDMessage,
+                            method.getDeclaringClass().getName(),
+                            method.getName(),
+                            ContextManager.getTraceId(),
+                            ContextManager.getSpanId(),
+                            OffsetDateTime.now(),
+                            ContextManager.getParentIdMessageIdQueue(),
+                            flagNewSpan.getVal(),
+                            startArgs,
+                            flagNewSpan.getKey().toString(),
+                            urlVal,
+                            serviceCallId,
+                            ContextManager.getMethodInpointName(),
+                            ContextManager.getMessageInpointId(),
+                            ContextManager.getClassInpointName()
+                    );
+                }
 
                 ContextManager.setMethodCallContextQueue(UUIDMessage);
 

@@ -1,10 +1,8 @@
 package io.bitdive.parent.utils;
 
-import io.bitdive.parent.message_producer.HttpURLConnectionCustom;
 import io.bitdive.parent.message_producer.HttpsURLConnectionCustom;
 import io.bitdive.parent.message_producer.LocalCryptoService;
 import io.bitdive.parent.parserConfig.YamlParserConfig;
-import io.bitdive.parent.safety_config.SSLContextCustomBitDive;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 
 import javax.net.ssl.HttpsURLConnection;
@@ -87,21 +85,20 @@ public class UtilsDataConvert {
         try {
             boolean isSSLSend = YamlParserConfig.getProfilingConfig().getMonitoring().getSendFiles().getServerConsumer().isSSLSend();
 
-            byte[] fileBytes = readFileBytes(file);
-            String base64Data = Base64.getEncoder().encodeToString(fileBytes);
+            byte[] base64Data = Base64.getEncoder().encode(readFileBytes(file));
+            //base64Data = fileBytes);
 
             // Encrypt the file data
-            Pair<Integer, String> encryptedData = isSSLSend ? LocalCryptoService.encrypt(base64Data) : Pair.createPair(-1, base64Data);
+            Pair<Integer, byte[]> encryptedData = /*isSSLSend ? LocalCryptoService.encrypt(base64Data) :*/ Pair.createPair(-1, base64Data);
 
             // Sign the encrypted data
-            Pair<Integer, String> signature = isSSLSend ? LocalCryptoService.sign(encryptedData.getVal()) : Pair.createPair(-1, "");
+            Pair<Integer, byte[]> signature = LocalCryptoService.sign(base64Data);
 
             URL serverUrl = new URL(YamlParserConfig.getProfilingConfig().getMonitoring().getSendFiles().getServerConsumer().getUrl() + "/" + methodOnServer);
 
             // Get and evaluate the response code
-            int responseCode = isSSLSend ?
-                    HttpsURLConnectionCustom.sentToServer((HttpsURLConnection) serverUrl.openConnection(proxy), file, encryptedData, signature) :
-                    HttpURLConnectionCustom.sentToServer((HttpURLConnection) serverUrl.openConnection(proxy), file, encryptedData, signature);
+            int responseCode =
+                    HttpsURLConnectionCustom.sentToServer((HttpsURLConnection) serverUrl.openConnection(proxy), file, encryptedData, signature);
 
             if (responseCode == HttpsURLConnection.HTTP_OK) {
                 if (LoggerStatusContent.isDebug())

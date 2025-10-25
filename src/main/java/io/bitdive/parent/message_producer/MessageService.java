@@ -182,6 +182,42 @@ public class MessageService {
                 ));
     }
 
+    // Overload for REST: includes method/headers/body/charset fields
+    public static void sendMessageStart(String messageId,
+                                        String className, String methodName, String traceId, String spanId,
+                                        OffsetDateTime dateStart, String parentMessage, boolean inPointFlag,
+                                        String args, String operationType, String urlRequest, String serviceCallId,
+                                        String methodInpointName,
+                                        String messageInpointId,
+                                        String classInpointName,
+                                        String httpHeaders,
+                                        String httpBody) {
+        sendMessage(buildMessage(
+                MessageTypeEnum.STAR.name(),
+                YamlParserConfig.getProfilingConfig().getApplication().getModuleName(),
+                YamlParserConfig.getProfilingConfig().getApplication().getServiceName(),
+                messageId,
+                className,
+                methodName,
+                traceId,
+                spanId,
+                dateStart.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                parentMessage,
+                String.valueOf(inPointFlag),
+                args,
+                operationType,
+                (urlRequest != null ? sanitizeUrl(urlRequest) : ""),
+                YamlParserConfig.getLibraryVersion(),
+                YamlParserConfig.getUUIDService(),
+                serviceCallId,
+                methodInpointName,
+                messageInpointId,
+                classInpointName,
+                (httpHeaders != null ? httpHeaders : ""),
+                (httpBody != null ? httpBody : "")
+        ));
+    }
+
     public static void sendMessageKafkaConsumer(String messageId,
                                                 String className, String methodName, String traceId, String spanId,
                                                 OffsetDateTime dateStart, OffsetDateTime dateEnd, boolean inPointFlag,

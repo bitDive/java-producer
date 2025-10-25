@@ -13,7 +13,6 @@ import java.lang.reflect.Method;
 public class ByteBuddyAgentThreadCreator {
     public static ResettableClassFileTransformer init(Instrumentation instrumentation) {
         return new AgentBuilder.Default()
-                .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
                 .type(ElementMatchers.nameStartsWith("org.springframework.util.CustomizableThreadCreator"))  // Укажите пакет ваших классов
                 .transform((builder, typeDescription, classLoader, module, sd) ->
                         builder.method(ElementMatchers.named("createThread"))  // Выбор всех методов для обертки

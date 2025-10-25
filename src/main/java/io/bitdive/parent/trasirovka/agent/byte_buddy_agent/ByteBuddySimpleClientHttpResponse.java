@@ -23,7 +23,6 @@ public class ByteBuddySimpleClientHttpResponse {
         try {
             Class<?> clientClass = Class.forName("org.springframework.http.client.ClientHttpResponse");
             return new AgentBuilder.Default()
-                    .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
                     .type(ElementMatchers.nameContains("org.springframework").and(ElementMatchers.isSubTypeOf(clientClass)))
                     .transform((builder, typeDescription, classLoader, module, dd) ->
                             builder.defineField("cachedBody", byte[].class, Visibility.PRIVATE)

@@ -34,7 +34,6 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
         try {
             Class<?> clientHttpRequestClass = Class.forName("org.springframework.http.client.ClientHttpRequest");
             return new AgentBuilder.Default()
-                    .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
                     .type(ElementMatchers.isSubTypeOf(clientHttpRequestClass))
                     .transform((builder, typeDescription, classLoader, module, dd) ->
                             builder.method(ElementMatchers.named("execute"))
@@ -134,6 +133,10 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
                         addHeaderMethod.invoke(headers, "x-BitDiv-custom-span-id", ContextManager.getSpanId());
                         addHeaderMethod.invoke(headers, "x-BitDiv-custom-parent-message-id", ContextManager.getMessageIdQueueNew());
                         addHeaderMethod.invoke(headers, "x-BitDiv-custom-service-call-id", serviceCallId);
+
+                        // addHeaderMethod.invoke(headers, "x-BitDiv-custom-method-inpoint-name", ContextManager.getMethodInpointName());
+                        // addHeaderMethod.invoke(headers, "x-BitDiv-custom-class-inpoint-name", ContextManager.getClassInpointName());
+                        //  addHeaderMethod.invoke(headers, "x-BitDiv-custom-message-inpoint-id", ContextManager.getMessageInpointId());
                     }
                 }
             } catch (Exception e) {

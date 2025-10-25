@@ -66,8 +66,9 @@ public class HttpsURLConnectionCustom {
 
     private static ProfilingConfig getProfilingConfig(byte[] body, HttpURLConnection conn) throws IOException {
         int code;
-        conn.setConnectTimeout((int) Duration.ofSeconds(10).toMillis());
-        conn.setReadTimeout((int) Duration.ofSeconds(20).toMillis());
+        int timeout = (int) Duration.ofSeconds(10).toMillis();
+        conn.setConnectTimeout(timeout);
+        conn.setReadTimeout(timeout);
         conn.setRequestMethod("POST");
         conn.setDoOutput(true);
         conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");

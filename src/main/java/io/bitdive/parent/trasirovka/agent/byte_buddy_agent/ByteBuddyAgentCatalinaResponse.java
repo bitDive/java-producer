@@ -16,7 +16,6 @@ import static io.bitdive.parent.message_producer.MessageService.sendMessageWebRe
 public class ByteBuddyAgentCatalinaResponse {
     public static ResettableClassFileTransformer init(Instrumentation instrumentation) {
         return new AgentBuilder.Default()
-                .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
                 .type(ElementMatchers.named("org.apache.catalina.connector.Request"))
                 .transform((builder, typeDescription, classLoader, module, dd) ->
                         builder.visit(Advice.to(CatalinaResponseInterceptor.class)
@@ -41,6 +40,15 @@ public class ByteBuddyAgentCatalinaResponse {
                 Class<?> responseClass = responseInternal.getClass();
                 Method getStatusMethod = responseClass.getMethod("getStatus");
                 int status = (int) getStatusMethod.invoke(responseInternal);
+
+                // finalize collected request body into context
+                try {
+                    byte[] bodyBytes = io.bitdive.parent.trasirovka.agent.utils.RequestBodyCollector.getBytes();
+                    if (bodyBytes != null) {
+                        ContextManager.setRequestBodyBytes(bodyBytes);
+                    }
+                } catch (Exception ignored) {
+                }
 
                 sendMessageWebResponse(
                         ContextManager.getMessageStart(),

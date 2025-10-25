@@ -1,8 +1,8 @@
 package io.bitdive.parent.trasirovka.agent.byte_buddy_agent;
 
-import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.ContextManager;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
+import io.bitdive.parent.trasirovka.agent.utils.RequestBodyCollector;
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.agent.builder.ResettableClassFileTransformer;
 import net.bytebuddy.asm.Advice;
@@ -11,6 +11,7 @@ import net.bytebuddy.matcher.ElementMatchers;
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.*;
 
 
 public class ByteBuddyAgentResponseWeb {
@@ -41,6 +42,7 @@ public class ByteBuddyAgentResponseWeb {
             if (LoggerStatusContent.getEnabledProfile()) return;
             try {
                 ContextManager.createNewRequest();
+                RequestBodyCollector.reset();
                 ContextManager.setUrlStart(extractFullUrlFromRequest(request));
                 Class<?> requestClass = request.getClass();
                 java.lang.reflect.Method getHeaderMethod = requestClass.getMethod("getHeader", String.class);
@@ -56,15 +58,63 @@ public class ByteBuddyAgentResponseWeb {
                 }
 
                 String headersServiceCallId = (String) getHeaderMethod.invoke(request, "x-BitDiv-custom-service-call-id");
-                if (headersSpanId != null) {
+                if (headersServiceCallId != null) {
                     ContextManager.setServiceCallId(headersServiceCallId);
                 }
 
+
+                // Capture all headers using Coyote API
+                try {
+                    Method getMimeHeaders = requestClass.getMethod("getMimeHeaders");
+                    Object mimeHeaders = getMimeHeaders.invoke(request);
+                    Map<String, List<String>> headersMap = new LinkedHashMap<>();
+
+                    if (mimeHeaders != null) {
+                        Class<?> mimeHeadersClass = mimeHeaders.getClass();
+                        Method namesMethod = mimeHeadersClass.getMethod("names");
+                        Object namesEnumObj = namesMethod.invoke(mimeHeaders);
+
+                        if (namesEnumObj instanceof Enumeration) {
+                            Enumeration<?> names = (Enumeration<?>) namesEnumObj;
+                            while (names.hasMoreElements()) {
+                                Object nameObj = names.nextElement();
+                                if (nameObj == null) continue;
+                                String name = nameObj.toString();
+
+                                // Get values for this header name
+                                Method getValuesMethod = mimeHeadersClass.getMethod("values", String.class);
+                                Object valuesEnumObj = getValuesMethod.invoke(mimeHeaders, name);
+                                List<String> values = new ArrayList<>();
+                                if (valuesEnumObj instanceof Enumeration) {
+                                    Enumeration<?> vals = (Enumeration<?>) valuesEnumObj;
+                                    while (vals.hasMoreElements()) {
+                                        Object v = vals.nextElement();
+                                        if (v != null) values.add(v.toString());
+                                    }
+                                }
+                                headersMap.put(name, values);
+                            }
+                        }
+                    }
+                    ContextManager.setRequestHeaders(headersMap);
+                } catch (Exception ignored) {
+                    if (LoggerStatusContent.isErrorsOrDebug())
+                        System.err.println("Error capturing headers: " + ignored.getMessage());
+                }
 
             } catch (Exception e) {
                 if (LoggerStatusContent.isErrorsOrDebug())
                     System.err.println("error run service for org.apache.catalina.connector.CoyoteAdapte error: " + e.getMessage());
             }
+        }
+
+        @Advice.OnMethodExit(onThrowable = Throwable.class)
+        public static void onExit() {
+            if (LoggerStatusContent.getEnabledProfile()) return;
+            // Note: Body is collected during method execution by ByteBuddyAgentCoyoteInputStream
+            // and must be retrieved here AFTER the controller has finished
+            // However, for incoming requests we need it BEFORE the controller runs,
+            // so we'll handle this differently - via a separate interception point
         }
     }
 
@@ -118,3 +168,4 @@ public class ByteBuddyAgentResponseWeb {
         }
     }
 }
+

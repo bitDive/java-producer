@@ -32,7 +32,6 @@ public class ByteBuddyAgentFeignRequestWeb {
         try {
             Class<?> clientClass = Class.forName("feign.Client");
             return new AgentBuilder.Default()
-                    .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
                     .type(ElementMatchers.isSubTypeOf(clientClass)
                             .and(ElementMatchers.not(ElementMatchers.nameContains("loadbalancer")))
                     )
@@ -107,6 +106,11 @@ public class ByteBuddyAgentFeignRequestWeb {
                     headers.put("x-BitDiv-custom-span-id", Collections.singletonList(ContextManager.getSpanId()));
                     headers.put("x-BitDiv-custom-parent-message-id", Collections.singletonList(ContextManager.getMessageIdQueueNew()));
                     headers.put("x-BitDiv-custom-service-call-id", Collections.singletonList(serviceCallId));
+
+
+                    //  headers.put("x-BitDiv-custom-method-inpoint-name", Collections.singletonList(ContextManager.getMethodInpointName()));
+                    //  headers.put("x-BitDiv-custom-class-inpoint-name", Collections.singletonList(ContextManager.getClassInpointName()));
+                    //   headers.put("x-BitDiv-custom-message-inpoint-id", Collections.singletonList(ContextManager.getMessageInpointId()));
 
                     // Recreate the request with modified headers
                     // Get the create method

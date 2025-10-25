@@ -75,7 +75,6 @@ public class ByteBuddyAgentSoap {
         public static MethodCtx onEnter(@Advice.This Object stub,      // com.sun.xml.ws.client.sei.SEIStub
                                         @Advice.Argument(1) Method m,
                                         @Advice.Argument(2) Object[] args) {
-
             MethodCtx ctx = new MethodCtx();
             if (LoggerStatusContent.getEnabledProfile()) return ctx;
             ctx.uuidMessage = UuidCreator.getTimeBased().toString();

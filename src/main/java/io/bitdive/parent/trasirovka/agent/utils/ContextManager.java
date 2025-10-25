@@ -3,6 +3,8 @@ package io.bitdive.parent.trasirovka.agent.utils;
 import io.bitdive.parent.dto.TraceMethodContext;
 
 import java.util.Deque;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 public class ContextManager {
@@ -40,6 +42,10 @@ public class ContextManager {
 
         traceMethodContext.setUrlStart(value.getUrlStart());
         traceMethodContext.setStartMessageId(value.getStartMessageId());
+
+        // Copy incoming request captured fields
+        traceMethodContext.setRequestHeaders(value.getRequestHeaders());
+        traceMethodContext.setRequestBodyBytes(value.getRequestBodyBytes());
         if (!value.getMethodCallContextQueue().isEmpty()) {
             traceMethodContext.getMethodCallContextQueue().offerLast(value.getMethodCallContextQueue().peekLast());
         }
@@ -50,26 +56,26 @@ public class ContextManager {
     public static String getClassInpointName() {
         return getContestThreadLocalOptional().map(TraceMethodContext::getClassInpointName).orElse(null);
     }
+    public static void setClassInpointName(String classInpointName) {
+        if (getClassInpointName() == null)
+            getContestThreadLocalOptional().ifPresent(traceMethodContext -> traceMethodContext.setClassInpointName(classInpointName));
+    }
 
     public static String getMethodInpointName() {
         return getContestThreadLocalOptional().map(TraceMethodContext::getMethodInpointName).orElse(null);
     }
+    public static void setMethodInpointName(String methodInpointName) {
+        if (getMethodInpointName() == null)
+            getContestThreadLocalOptional().ifPresent(traceMethodContext -> traceMethodContext.setMethodInpointName(methodInpointName));
+    }
+
 
     public static String getMessageInpointId() {
         return getContestThreadLocalOptional().map(TraceMethodContext::getMessageInpointId).orElse(null);
     }
-
-
-    public static void setClassInpointName(String classInpointName) {
-        getContestThreadLocalOptional().ifPresent(traceMethodContext -> traceMethodContext.setClassInpointName(classInpointName));
-    }
-
-    public static void setMethodInpointName(String methodInpointName) {
-        getContestThreadLocalOptional().ifPresent(traceMethodContext -> traceMethodContext.setMethodInpointName(methodInpointName));
-    }
-
     public static void setMessageInpointId(String messageInpointId) {
-        getContestThreadLocalOptional().ifPresent(traceMethodContext -> traceMethodContext.setMessageInpointId(messageInpointId));
+        if (getMessageInpointId() == null)
+            getContestThreadLocalOptional().ifPresent(traceMethodContext -> traceMethodContext.setMessageInpointId(messageInpointId));
     }
 
 
@@ -145,6 +151,29 @@ public class ContextManager {
         return Optional.ofNullable(contextThreadLocal.get());
     }
 
+    /* ---------- Incoming request data ---------- */
+    public static void setRequestHeaders(Map<String, List<String>> headers) {
+        getContestThreadLocalOptional().ifPresent(ctx -> ctx.setRequestHeaders(headers));
+    }
 
+    public static Map<String, List<String>> getRequestHeaders() {
+        return getContestThreadLocalOptional().map(ctx -> {
+            Map<String, List<String>> v = ctx.getRequestHeaders();
+            ctx.setRequestHeaders(null);
+            return v;
+        }).orElse(null);
+    }
+
+    public static void setRequestBodyBytes(byte[] body) {
+        getContestThreadLocalOptional().ifPresent(ctx -> ctx.setRequestBodyBytes(body));
+    }
+
+    public static byte[] getRequestBodyBytes() {
+        return getContestThreadLocalOptional().map(ctx -> {
+            byte[] v = ctx.getRequestBodyBytes();
+            ctx.setRequestBodyBytes(null);
+            return v;
+        }).orElse(null);
+    }
 
 }

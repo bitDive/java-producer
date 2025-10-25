@@ -80,6 +80,9 @@ public class KafkaListenerAspect {
             }
         }
         ContextManager.setMethodCallContextQueue(uuidMessage);
+        ContextManager.setClassInpointName(methodSig.getDeclaringTypeName());
+        ContextManager.setMethodInpointName(methodSig.getName());
+        ContextManager.setMessageInpointId(uuidMessage);
         Object retVal;
         try {
             retVal = joinPoint.proceed();
@@ -87,9 +90,7 @@ public class KafkaListenerAspect {
             thrown = t;
             throw t;
         } finally {
-            ContextManager.setClassInpointName(methodSig.getDeclaringTypeName());
-            ContextManager.setMethodInpointName(methodSig.getName());
-            ContextManager.setMessageInpointId(uuidMessage);
+
 
             sendMessageKafkaConsumer(
                     uuidMessage,

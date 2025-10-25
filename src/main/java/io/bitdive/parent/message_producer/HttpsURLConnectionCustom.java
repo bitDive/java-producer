@@ -19,8 +19,8 @@ public class HttpsURLConnectionCustom {
 
     public static int sentToServer(HttpsURLConnection connection,
                                    File file,
-                                   Pair<Integer, String> encryptedData,
-                                   Pair<Integer, String> signature) throws IOException {
+                                   Pair<Integer, byte[]> encryptedData,
+                                   Pair<Integer, byte[]> signature) throws IOException {
 
         try {
             return send(connection, file, encryptedData, signature, !TRUST_ALL_MODE);
@@ -32,7 +32,7 @@ public class HttpsURLConnectionCustom {
         }
     }
 
-    private static int send(HttpsURLConnection connection, File file, Pair<Integer, String> encryptedData, Pair<Integer, String> signature, boolean strictTls) throws IOException {
+    private static int send(HttpsURLConnection connection, File file, Pair<Integer, byte[]> encryptedData, Pair<Integer, byte[]> signature, boolean strictTls) throws IOException {
 
         SSLContext ctx = strictTls ? SSLContextCustomBitDive.strict()
                 : SSLContextCustomBitDive.trustAll();
@@ -60,19 +60,11 @@ public class HttpsURLConnectionCustom {
             writer.append("--").append(BOUNDARY).append(LF);
             writer.append("Content-Disposition: form-data; name=\"encryptedData\"; filename=\"")
                     .append(file.getName()).append("\"").append(LF);
-            writer.append("Content-Type: ")
-                    .append(Files.probeContentType(file.toPath())).append(LF);
+            writer.append("Content-Type: ").append(Files.probeContentType(file.toPath())).append(LF);
             writer.append(LF).flush();
-            outputStream.write(encryptedData.getVal().getBytes(StandardCharsets.UTF_8));
+            outputStream.write(encryptedData.getVal());
             outputStream.flush();
             writer.append(LF).flush();
-
-
-            writer.append("--").append(BOUNDARY).append(LF);
-            writer.append("Content-Disposition: form-data; name=\"signature\"").append(LF);
-            writer.append("Content-Type: text/plain").append(LF).append(LF).flush();
-            writer.append(signature.getVal()).append(LF).flush();
-
 
             writer.append("--").append(BOUNDARY).append(LF);
             writer.append("Content-Disposition: form-data; name=\"encrypteKeyId\"").append(LF);
@@ -81,9 +73,19 @@ public class HttpsURLConnectionCustom {
 
 
             writer.append("--").append(BOUNDARY).append(LF);
+            writer.append("Content-Disposition: form-data; name=\"signature\"; filename=\"signature.bin\"").append(LF);
+            writer.append("Content-Type: application/octet-stream").append(LF).append(LF).flush();
+            outputStream.write(signature.getVal());
+            outputStream.write(LF.getBytes(StandardCharsets.UTF_8));
+            outputStream.flush();
+
+
+
+            writer.append("--").append(BOUNDARY).append(LF);
             writer.append("Content-Disposition: form-data; name=\"signatureKeyId\"").append(LF);
             writer.append("Content-Type: text/plain").append(LF).append(LF).flush();
             writer.append(signature.getKey().toString()).append(LF).flush();
+
 
             writer.append("--").append(BOUNDARY).append("--").append(LF).flush();
         }

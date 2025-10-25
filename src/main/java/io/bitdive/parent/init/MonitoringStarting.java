@@ -20,6 +20,7 @@ public class MonitoringStarting {
         ByteBuddyAgentThreadCreator.init(instrumentation);
         ByteBuddySimpleClientHttpResponse.init(instrumentation);
         ByteBuddyAgentRestTemplateRequestWeb.init(instrumentation);
+        ByteBuddyAgentCoyoteInputStream.init(instrumentation);  // Captures raw body bytes
         ByteBuddyAgentResponseWeb.init(instrumentation);
         ByteBuddyAgentSql.init(instrumentation);
         ByteBuddyAgentCatalinaResponse.init(instrumentation);
