@@ -176,4 +176,23 @@ public class ContextManager {
         }).orElse(null);
     }
 
+    /**
+     * КРИТИЧНО: Очистка ThreadLocal для предотвращения утечек памяти.
+     * Должен вызываться в finally блоке после завершения обработки запроса.
+     */
+    public static void cleanup() {
+        contextThreadLocal.remove();
+    }
+
+    /**
+     * Безопасная очистка - игнорирует исключения
+     */
+    public static void cleanupSafely() {
+        try {
+            contextThreadLocal.remove();
+        } catch (Exception e) {
+            // Игнорируем исключения при очистке
+        }
+    }
+
 }

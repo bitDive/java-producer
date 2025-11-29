@@ -28,7 +28,6 @@ public class ByteBuddyAgentThread {
         public static void onEnter(
                 @Advice.Origin String method,
                 @Advice.Argument(value = 0, readOnly = false) Callable<?> callable) {
-
             TraceMethodContext currentContext = ContextManager.getContext();
             callable = new ContextCallableCustom<>(callable, currentContext);
         }

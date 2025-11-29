@@ -7,7 +7,7 @@
 
     <groupId>io.bitdive</groupId>
     <artifactId>bitdive-producer-spring-2</artifactId>
-    <version>1.3.4</version>
+    <version>1.3.6</version>
     <name>producer-for-spring-2</name>
     <parent>
         <groupId>org.springframework.boot</groupId>
@@ -82,12 +82,19 @@
         <dependency>
             <groupId>io.bitdive</groupId>
             <artifactId>java-producer-parent</artifactId>
-            <version>1.3.4</version>
+            <version>1.3.6</version>
         </dependency>
 
         <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-core</artifactId>
+        </dependency>
+
+        <!-- Servlet API для компиляции фильтров (provided - будет в Spring Boot) -->
+        <dependency>
+            <groupId>javax.servlet</groupId>
+            <artifactId>javax.servlet-api</artifactId>
+            <scope>provided</scope>
         </dependency>
 
 

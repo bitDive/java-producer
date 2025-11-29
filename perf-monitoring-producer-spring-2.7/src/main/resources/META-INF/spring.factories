@@ -1,4 +1,5 @@
 org.springframework.context.ApplicationContextInitializer=\
   io.bitdive.ByteBuddyAgentInitializer
 org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
-  io.bitdive.SpringConfigProfiling
+  io.bitdive.SpringConfigProfiling,\
+  io.bitdive.config.BitDiveAutoConfiguration

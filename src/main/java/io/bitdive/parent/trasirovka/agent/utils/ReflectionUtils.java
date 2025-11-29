@@ -1,15 +1,20 @@
 package io.bitdive.parent.trasirovka.agent.utils;
 
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.jsontype.impl.LaissezFaireSubTypeValidator;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.fasterxml.jackson.module.afterburner.AfterburnerModule;
 import io.bitdive.parent.parserConfig.YamlParserConfig;
-import io.bitdive.parent.trasirovka.agent.utils.objectMaperConfig.*;
+import io.bitdive.parent.trasirovka.agent.utils.objectMaperConfig.CollectionSizeLimiter;
+import io.bitdive.parent.trasirovka.agent.utils.objectMaperConfig.FlowDataToPlaceholderModule;
+import io.bitdive.parent.trasirovka.agent.utils.objectMaperConfig.MaskingFilter;
+import io.bitdive.parent.trasirovka.agent.utils.objectMaperConfig.PackageBasedSerializerModifier;
 import io.bitdive.parent.utils.hibernateConfig.HibernateModuleLoader;
 
 import java.lang.reflect.Field;
@@ -18,7 +23,6 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Stream;
 
 public class ReflectionUtils {
 
@@ -66,6 +70,12 @@ public class ReflectionUtils {
                 .ifPresent(moduleHibernate ->
                         mapper.registerModule(moduleHibernate)
                 );
+
+        mapper.activateDefaultTyping(
+                LaissezFaireSubTypeValidator.instance,
+                ObjectMapper.DefaultTyping.NON_FINAL,
+                JsonTypeInfo.As.PROPERTY
+        );
 
 
     }

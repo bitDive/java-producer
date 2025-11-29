@@ -1,6 +1,5 @@
 package io.bitdive.parent.trasirovka.agent.byte_buddy_agent.db;
 
-import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.agent.builder.ResettableClassFileTransformer;
@@ -35,6 +34,7 @@ public class ByteBuddyAgentSqlDriver {
                                        @SuperCall Callable<?> zuper,
                                        @This Object thiz,
                                        @AllArguments Object[] args) throws Throwable {
+            if (LoggerStatusContent.getEnabledProfile()) return zuper.call();
             String url = (args[0] instanceof String) ? (String) args[0] : null;
             // Properties info = (args[1] instanceof Properties) ? (Properties) args[1] : null;
 

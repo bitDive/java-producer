@@ -3,7 +3,9 @@ package io.bitdive.jvm_metrics;
 import io.bitdive.parent.parserConfig.ProfilingConfig;
 import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
+import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Tags;
 import io.micrometer.core.instrument.binder.jvm.JvmGcMetrics;
 import io.micrometer.core.instrument.binder.jvm.JvmMemoryMetrics;
 import io.micrometer.core.instrument.binder.jvm.JvmThreadMetrics;
@@ -14,7 +16,12 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
+import java.lang.management.MemoryMXBean;
+import java.lang.management.MemoryPoolMXBean;
+import java.lang.management.MemoryUsage;
 import java.net.Proxy;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
@@ -27,8 +34,6 @@ import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-
-import java.nio.charset.StandardCharsets;
 import java.util.zip.CRC32;
 
 import static io.bitdive.parent.utils.UtilsDataConvert.initilizationProxy;
@@ -141,6 +146,10 @@ public class GenerateJvmMetrics {
             new ProcessorMetrics().bindTo(meterRegistry);
             new UptimeMetrics().bindTo(meterRegistry);
             new FileDescriptorMetrics().bindTo(meterRegistry);
+
+            // Регистрируем дополнительные метрики heap напрямую через MemoryMXBean
+            registerDetailedHeapMetrics(meterRegistry);
+            
             meterRegistry.counter("bitDive.metrics").increment(5);
 
             Runnable logTask = GenerateJvmMetrics::collectMetrics;
@@ -149,6 +158,106 @@ public class GenerateJvmMetrics {
             if (LoggerStatusContent.isErrorsOrDebug())
                 System.out.println("Start logging metrics every minute to a directory: " + logDirectoryPath.toAbsolutePath());
         }
+    }
+
+    /**
+     * Регистрирует детальные метрики heap памяти через MemoryMXBean.
+     * Эти метрики обновляются в реальном времени при каждом запросе.
+     */
+    private static void registerDetailedHeapMetrics(MeterRegistry registry) {
+        MemoryMXBean memoryMXBean = ManagementFactory.getMemoryMXBean();
+
+        // Heap Memory - общие метрики
+        Gauge.builder("jvm.heap.used", memoryMXBean, m -> m.getHeapMemoryUsage().getUsed())
+                .tags(Tags.of("area", "heap"))
+                .description("Current heap memory used")
+                .baseUnit("bytes")
+                .register(registry);
+
+        Gauge.builder("jvm.heap.committed", memoryMXBean, m -> m.getHeapMemoryUsage().getCommitted())
+                .tags(Tags.of("area", "heap"))
+                .description("Heap memory committed")
+                .baseUnit("bytes")
+                .register(registry);
+
+        Gauge.builder("jvm.heap.max", memoryMXBean, m -> m.getHeapMemoryUsage().getMax())
+                .tags(Tags.of("area", "heap"))
+                .description("Maximum heap memory")
+                .baseUnit("bytes")
+                .register(registry);
+
+        Gauge.builder("jvm.heap.init", memoryMXBean, m -> m.getHeapMemoryUsage().getInit())
+                .tags(Tags.of("area", "heap"))
+                .description("Initial heap memory")
+                .baseUnit("bytes")
+                .register(registry);
+
+        // Heap utilization percentage
+        Gauge.builder("jvm.heap.utilization", memoryMXBean, m -> {
+                    MemoryUsage usage = m.getHeapMemoryUsage();
+                    if (usage.getMax() > 0) {
+                        return (double) usage.getUsed() / usage.getMax() * 100;
+                    }
+                    return 0.0;
+                })
+                .tags(Tags.of("area", "heap"))
+                .description("Heap memory utilization percentage")
+                .baseUnit("percent")
+                .register(registry);
+
+        // Non-Heap Memory
+        Gauge.builder("jvm.nonheap.used", memoryMXBean, m -> m.getNonHeapMemoryUsage().getUsed())
+                .tags(Tags.of("area", "nonheap"))
+                .description("Current non-heap memory used")
+                .baseUnit("bytes")
+                .register(registry);
+
+        Gauge.builder("jvm.nonheap.committed", memoryMXBean, m -> m.getNonHeapMemoryUsage().getCommitted())
+                .tags(Tags.of("area", "nonheap"))
+                .description("Non-heap memory committed")
+                .baseUnit("bytes")
+                .register(registry);
+
+        // Memory Pools - детальная информация по каждому пулу
+        for (MemoryPoolMXBean pool : ManagementFactory.getMemoryPoolMXBeans()) {
+            String poolName = pool.getName();
+            String poolType = pool.getType().name().toLowerCase(); // heap или nonheap
+
+            Tags poolTags = Tags.of("pool", poolName, "area", poolType);
+
+            Gauge.builder("jvm.memory.pool.used", pool, p -> p.getUsage().getUsed())
+                    .tags(poolTags)
+                    .description("Memory pool used")
+                    .baseUnit("bytes")
+                    .register(registry);
+
+            Gauge.builder("jvm.memory.pool.committed", pool, p -> p.getUsage().getCommitted())
+                    .tags(poolTags)
+                    .description("Memory pool committed")
+                    .baseUnit("bytes")
+                    .register(registry);
+
+            Gauge.builder("jvm.memory.pool.max", pool, p -> {
+                        long max = p.getUsage().getMax();
+                        return max > 0 ? max : 0;
+                    })
+                    .tags(poolTags)
+                    .description("Memory pool max")
+                    .baseUnit("bytes")
+                    .register(registry);
+
+            // Peak usage - максимальное использование с момента старта JVM
+            Gauge.builder("jvm.memory.pool.peak.used", pool, p -> p.getPeakUsage().getUsed())
+                    .tags(poolTags)
+                    .description("Peak memory pool used since JVM start")
+                    .baseUnit("bytes")
+                    .register(registry);
+        }
+
+        // Pending finalization count
+        Gauge.builder("jvm.gc.pending.finalization", memoryMXBean, MemoryMXBean::getObjectPendingFinalizationCount)
+                .description("Objects pending finalization")
+                .register(registry);
     }
 
 

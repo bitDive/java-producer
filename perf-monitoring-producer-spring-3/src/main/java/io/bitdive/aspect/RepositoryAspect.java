@@ -9,6 +9,7 @@ import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.reflect.MethodSignature;
+import org.springframework.aop.support.AopUtils;
 import org.springframework.stereotype.Component;
 
 import java.time.OffsetDateTime;
@@ -27,13 +28,13 @@ public class RepositoryAspect {
         String UUIDMessage = UuidCreator.getTimeBased().toString();
         Object retVal = null;
         Throwable thrown = null;
+
         MethodSignature methodSig = (MethodSignature) joinPoint.getSignature();
-
+        Class<?> targetClass = AopUtils.getTargetClass(joinPoint.getTarget());
         try {
-
             sendMessageStart(
                     UUIDMessage,
-                    methodSig.getDeclaringTypeName(),
+                    targetClass.getName(),
                     methodSig.getName(),
                     ContextManager.getTraceId(),
                     ContextManager.getSpanId(),

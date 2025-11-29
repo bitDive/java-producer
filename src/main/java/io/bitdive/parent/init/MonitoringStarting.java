@@ -6,13 +6,20 @@ import io.bitdive.parent.trasirovka.agent.byte_buddy_agent.*;
 import io.bitdive.parent.trasirovka.agent.byte_buddy_agent.db.*;
 import io.bitdive.parent.trasirovka.agent.byte_buddy_agent.db.cached.ByteBuddyCachedOpenSearchReqest;
 import io.bitdive.parent.trasirovka.agent.byte_buddy_agent.db.cached.ByteBuddyCachedOpenSearchResponse;
+import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
+import io.bitdive.parent.utils.ResourceCleanupManager;
 import net.bytebuddy.agent.ByteBuddyAgent;
 
 import java.lang.instrument.Instrumentation;
+import java.time.Duration;
 
 public class MonitoringStarting {
     public static void init() {
+        // КРИТИЧНО: Регистрируем shutdown hook для очистки ресурсов
+        ResourceCleanupManager.registerShutdownHook();
+        
         VaultGettingConfig.initVaultConnect();
+        LoggerStatusContent.initMonitoringDelay(Duration.ofSeconds(60));
         Instrumentation instrumentation = ByteBuddyAgent.install();
 
         ByteBuddyAgentBasic.init(instrumentation);

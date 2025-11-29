@@ -84,4 +84,28 @@ public class VaultGettingConfig {
         addKeyPrivateKey(maxKeyId, response.getDataObject().get("keys").asObject().get(String.valueOf(maxKeyId)).asString());
     }
 
+    /**
+     * КРИТИЧНО: Остановка scheduler для предотвращения утечек потоков.
+     * Должен вызываться при shutdown приложения.
+     */
+    public static void shutdown() {
+        if (scheduler != null && !scheduler.isShutdown()) {
+            scheduler.shutdown();
+            try {
+                if (!scheduler.awaitTermination(10, TimeUnit.SECONDS)) {
+                    scheduler.shutdownNow();
+                    if (LoggerStatusContent.isDebug()) {
+                        System.out.println("VaultGettingConfig scheduler forced shutdown");
+                    }
+                }
+            } catch (InterruptedException e) {
+                scheduler.shutdownNow();
+                Thread.currentThread().interrupt();
+                if (LoggerStatusContent.isErrorsOrDebug()) {
+                    System.err.println("VaultGettingConfig scheduler shutdown interrupted");
+                }
+            }
+        }
+    }
+
 }

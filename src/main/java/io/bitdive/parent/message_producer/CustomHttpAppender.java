@@ -18,7 +18,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.*;
@@ -172,19 +171,46 @@ public class CustomHttpAppender extends AbstractAppender {
     @Override
     public void stop() {
         super.stop();
-        if (scheduler == null) return;
-        scheduler.shutdown();
-        try {
-            if (!scheduler.awaitTermination(40, TimeUnit.SECONDS)) {
+
+        // Останавливаем scheduler
+        if (scheduler != null) {
+            scheduler.shutdown();
+            try {
+                if (!scheduler.awaitTermination(40, TimeUnit.SECONDS)) {
+                    scheduler.shutdownNow();
+                }
+            } catch (InterruptedException e) {
                 scheduler.shutdownNow();
+                Thread.currentThread().interrupt();
             }
-            if (LoggerStatusContent.isDebug())
-                System.out.println("Metric logging has stopped.");
-        } catch (InterruptedException e) {
-            scheduler.shutdownNow();
-            Thread.currentThread().interrupt();
-            if (LoggerStatusContent.isErrorsOrDebug())
-                System.err.println("Metrics logging was interrupted.");
+        }
+
+        // КРИТИЧНО: Останавливаем thread pool для предотвращения утечки потоков
+        if (pool != null) {
+            pool.shutdown();
+            try {
+                if (!pool.awaitTermination(30, TimeUnit.SECONDS)) {
+                    if (LoggerStatusContent.isDebug()) {
+                        System.out.println("Pool did not terminate in time, forcing shutdown...");
+                    }
+                    pool.shutdownNow();
+                    // Ждем еще немного после принудительной остановки
+                    if (!pool.awaitTermination(10, TimeUnit.SECONDS)) {
+                        if (LoggerStatusContent.isErrorsOrDebug()) {
+                            System.err.println("Pool did not terminate after forced shutdown");
+                        }
+                    }
+                }
+                if (LoggerStatusContent.isDebug()) {
+                    System.out.println("Metric logging and thread pool have stopped.");
+                }
+            } catch (InterruptedException e) {
+                pool.shutdownNow();
+                Thread.currentThread().interrupt();
+                if (LoggerStatusContent.isErrorsOrDebug()) {
+                    System.err.println("Thread pool shutdown was interrupted.");
+                }
+            }
         }
     }
 }
