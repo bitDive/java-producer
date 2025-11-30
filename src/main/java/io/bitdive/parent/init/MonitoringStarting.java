@@ -7,7 +7,6 @@ import io.bitdive.parent.trasirovka.agent.byte_buddy_agent.db.*;
 import io.bitdive.parent.trasirovka.agent.byte_buddy_agent.db.cached.ByteBuddyCachedOpenSearchReqest;
 import io.bitdive.parent.trasirovka.agent.byte_buddy_agent.db.cached.ByteBuddyCachedOpenSearchResponse;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
-import io.bitdive.parent.utils.ResourceCleanupManager;
 import net.bytebuddy.agent.ByteBuddyAgent;
 
 import java.lang.instrument.Instrumentation;
@@ -15,8 +14,8 @@ import java.time.Duration;
 
 public class MonitoringStarting {
     public static void init() {
-        // КРИТИЧНО: Регистрируем shutdown hook для очистки ресурсов
-        ResourceCleanupManager.registerShutdownHook();
+        // КРИТИЧНО: Регистрация shutdown hook для очистки ресурсов
+        registerShutdownHook();
         
         VaultGettingConfig.initVaultConnect();
         LoggerStatusContent.initMonitoringDelay(Duration.ofSeconds(60));
@@ -49,5 +48,26 @@ public class MonitoringStarting {
         ByteBuddyAgentSoap.init(instrumentation);
 
         ByteBuddyAgentSpringRawWs.init(instrumentation);
+    }
+
+    /**
+     * КРИТИЧНО: Регистрация shutdown hook для корректной остановки всех ресурсов
+     */
+    private static void registerShutdownHook() {
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            try {
+                // Останавливаем Vault scheduler
+                VaultGettingConfig.shutdown();
+            } catch (Exception e) {
+                System.err.println("Error shutting down Vault scheduler: " + e.getMessage());
+            }
+
+            try {
+                // Останавливаем monitoring delay scheduler (если еще работает)
+                LoggerStatusContent.shutdownScheduler();
+            } catch (Exception e) {
+                System.err.println("Error shutting down monitoring scheduler: " + e.getMessage());
+            }
+        }, "BitDive-Shutdown-Hook"));
     }
 }

@@ -56,6 +56,10 @@ public class ByteBuddyAgentCatalinaResponse {
                         ContextManager.getSpanId(),
                         status
                 );
+
+                // КРИТИЧНО: Очистка всех ThreadLocal переменных после завершения запроса
+                ContextManager.cleanupSafely();
+                io.bitdive.parent.trasirovka.agent.utils.RequestBodyCollector.cleanupSafely();
             } catch (Exception e) {
                 if (LoggerStatusContent.isErrorsOrDebug())
                     System.err.println("error call finishRequest for org.apache.catalina.connector.Request  error : " + e.getMessage());
