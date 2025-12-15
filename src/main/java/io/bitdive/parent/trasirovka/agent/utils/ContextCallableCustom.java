@@ -16,6 +16,10 @@ public class ContextCallableCustom<V> implements Callable<V> {
     @Override
     public V call() throws Exception {
         ContextManager.setContextThread(context);
-        return originalCallable.call();
+        try {
+            return originalCallable.call();
+        } finally {
+            ContextManager.cleanupSafely();
+        }
     }
 }

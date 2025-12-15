@@ -24,9 +24,8 @@ import static io.bitdive.parent.trasirovka.agent.utils.MessageTypeEnum.NEO4J_DB_
 
 public class ByteBuddyAgentNeo4j {
 
-    public static ResettableClassFileTransformer init(Instrumentation inst) {
-        return new AgentBuilder.Default()
-                .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
+    public static AgentBuilder init(AgentBuilder agentBuilder)  {
+        return agentBuilder
                 .type(ElementMatchers.hasSuperType(
                         ElementMatchers.named("org.neo4j.driver.internal.AbstractQueryRunner")))
                 .transform((builder, td, cl, module, pd) ->
@@ -35,8 +34,7 @@ public class ByteBuddyAgentNeo4j {
                                         .and(ElementMatchers.takesArguments(1))
                                 )
                         )
-                )
-                .installOn(inst);
+                );
     }
 
     public static class Neo4jAdvice {

@@ -11,19 +11,21 @@ import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Method;
 
 public class ByteBuddyAgentThreadCreator {
-    public static ResettableClassFileTransformer init(Instrumentation instrumentation) {
-        return new AgentBuilder.Default()
-                .type(ElementMatchers.nameStartsWith("org.springframework.util.CustomizableThreadCreator"))  // Укажите пакет ваших классов
-                .transform((builder, typeDescription, classLoader, module, sd) ->
-                        builder.method(ElementMatchers.named("createThread"))  // Выбор всех методов для обертки
-                                .intercept(Advice.to(ThreadCreatorInterceptor.class))
-                ).installOn(instrumentation);
+    public static AgentBuilder  init(AgentBuilder agentBuilder) {
+        return agentBuilder
+                .type(ElementMatchers.nameStartsWith("org.springframework.util.CustomizableThreadCreator")) // Укажите
+                                                                                                            // пакет
+                                                                                                            // ваших
+                                                                                                            // классов
+                .transform((builder, typeDescription, classLoader, module, sd) -> builder
+                        .method(ElementMatchers.named("createThread")) // Выбор всех методов для обертки
+                        .intercept(Advice.to(ThreadCreatorInterceptor.class)));
     }
 
     public static class ThreadCreatorInterceptor {
         @Advice.OnMethodEnter
         public static void onMethodEnter(@Advice.Origin Method method,
-                                         @Advice.Argument(value = 0, readOnly = false) Runnable runnable) {
+                @Advice.Argument(value = 0, readOnly = false) Runnable runnable) {
             runnable = new ContextRunnableCustom(runnable, ContextManager.getContext());
         }
     }

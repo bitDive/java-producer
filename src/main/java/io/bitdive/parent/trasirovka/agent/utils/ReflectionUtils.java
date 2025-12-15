@@ -10,19 +10,16 @@ import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.fasterxml.jackson.module.afterburner.AfterburnerModule;
+
+import com.fasterxml.jackson.databind.*;
+import com.fasterxml.jackson.databind.jsontype.impl.StdTypeResolverBuilder;
 import io.bitdive.parent.parserConfig.YamlParserConfig;
-import io.bitdive.parent.trasirovka.agent.utils.objectMaperConfig.CollectionSizeLimiter;
-import io.bitdive.parent.trasirovka.agent.utils.objectMaperConfig.FlowDataToPlaceholderModule;
-import io.bitdive.parent.trasirovka.agent.utils.objectMaperConfig.MaskingFilter;
-import io.bitdive.parent.trasirovka.agent.utils.objectMaperConfig.PackageBasedSerializerModifier;
+import io.bitdive.parent.trasirovka.agent.utils.objectMaperConfig.*;
 import io.bitdive.parent.utils.hibernateConfig.HibernateModuleLoader;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 
 public class ReflectionUtils {
 
@@ -37,10 +34,14 @@ public class ReflectionUtils {
             .getProfilingConfig().getMonitoring().getSerialization().getExcludedPackages();
     private static final String INDICATOR = "...";
 
-    static ObjectMapper mapper = new ObjectMapper();
+    static ObjectMapper mapper;
 
-    static {
 
+    public static void init(List<StdTypeResolverBuilder> builders ) {
+
+        mapper= new ObjectMapper();
+
+        SpringOptionalSerializers.tryRegisterSpringSortSerializer(mapper);
 
         mapper.enable(SerializationFeature.WRITE_SELF_REFERENCES_AS_NULL);
         mapper.getFactory().disable(JsonGenerator.Feature.AUTO_CLOSE_TARGET);
@@ -77,6 +78,9 @@ public class ReflectionUtils {
                 JsonTypeInfo.As.PROPERTY
         );
 
+        builders.forEach(builder -> {
+            mapper.setDefaultTyping(builder);
+        });
 
     }
 

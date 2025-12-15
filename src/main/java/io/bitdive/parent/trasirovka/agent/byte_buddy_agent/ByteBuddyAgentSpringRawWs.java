@@ -24,9 +24,8 @@ import static net.bytebuddy.matcher.ElementMatchers.*;
 
 public class ByteBuddyAgentSpringRawWs {
 
-    public static ResettableClassFileTransformer init(Instrumentation inst) {
-        return new AgentBuilder.Default()
-                .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
+    public static AgentBuilder init(AgentBuilder agentBuilder)  {
+        return agentBuilder
                 .type(hasSuperType(named("org.springframework.web.socket.handler.AbstractWebSocketHandler")))
                 .transform((builder, td, cl, module, pd) -> builder
                         .method(named("handleTextMessage")
@@ -34,8 +33,7 @@ public class ByteBuddyAgentSpringRawWs {
                                 .and(takesArgument(0, named("org.springframework.web.socket.WebSocketSession")))
                                 .and(takesArgument(1, named("org.springframework.web.socket.TextMessage"))))
                         .intercept(MethodDelegation.to(TextInterceptor.class))
-                )
-                .installOn(inst);
+                );
     }
 
     public static class TextInterceptor {

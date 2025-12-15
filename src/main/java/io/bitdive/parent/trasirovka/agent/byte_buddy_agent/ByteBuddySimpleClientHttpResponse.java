@@ -19,7 +19,7 @@ import java.lang.reflect.Field;
 import java.util.concurrent.Callable;
 
 public class ByteBuddySimpleClientHttpResponse {
-    public static ResettableClassFileTransformer init(Instrumentation instrumentation) {
+    public static AgentBuilder  init(AgentBuilder agentBuilder) {
         try {
             Class<?> clientClass = Class.forName("org.springframework.http.client.ClientHttpResponse");
             return new AgentBuilder.Default()
@@ -28,12 +28,12 @@ public class ByteBuddySimpleClientHttpResponse {
                             builder.defineField("cachedBody", byte[].class, Visibility.PRIVATE)
                                     .method(ElementMatchers.named("getBody"))
                                     .intercept(MethodDelegation.to(GetBodyInterceptor.class))
-                    ).installOn(instrumentation);
+                    );
         } catch (Exception e) {
             if (LoggerStatusContent.isErrorsOrDebug())
                 System.err.println("Not found class feign.Client in ClassLoader.");
         }
-        return null;
+        return agentBuilder;
     }
 
 

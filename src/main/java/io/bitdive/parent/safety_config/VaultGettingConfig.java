@@ -19,7 +19,6 @@ public class VaultGettingConfig {
     private static final String ENCRYPTION_KEY_PATH = "transit/export/encryption-key/encryption-key";
     private static final String SIGNING_KEY_PATH = "transit/export/signing-key/signing-key";
 
-
     private static final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
 
     public static Vault initVault() {
@@ -72,7 +71,8 @@ public class VaultGettingConfig {
                 .map(Integer::parseInt)
                 .max(Integer::compareTo)
                 .orElse(null);
-        addKeySecretKey(maxKeyId, response.getDataObject().get("keys").asObject().get(String.valueOf(maxKeyId)).asString());
+        addKeySecretKey(maxKeyId,
+                response.getDataObject().get("keys").asObject().get(String.valueOf(maxKeyId)).asString());
     }
 
     public static void updateRSAPrivateKey() throws Exception {
@@ -81,7 +81,8 @@ public class VaultGettingConfig {
                 .map(Integer::parseInt)
                 .max(Integer::compareTo)
                 .orElse(null);
-        addKeyPrivateKey(maxKeyId, response.getDataObject().get("keys").asObject().get(String.valueOf(maxKeyId)).asString());
+        addKeyPrivateKey(maxKeyId,
+                response.getDataObject().get("keys").asObject().get(String.valueOf(maxKeyId)).asString());
     }
 
     /**

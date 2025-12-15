@@ -26,11 +26,10 @@ import static io.bitdive.parent.trasirovka.agent.utils.DataUtils.getaNullThrowab
 
 public class ByteBuddyAgentCassandra {
 
-    public static ResettableClassFileTransformer init(Instrumentation instrumentation) {
+    public static AgentBuilder init(AgentBuilder agentBuilder)  {
         try {
             Class<?> clientClass = Class.forName("com.datastax.oss.driver.api.core.CqlSession");
-            return new AgentBuilder.Default()
-                    .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
+            return agentBuilder
                     .type(typeDescription ->
                             typeDescription.isAssignableTo(clientClass)
                                     && !typeDescription.getName().contains("Proxy")
@@ -42,14 +41,13 @@ public class ByteBuddyAgentCassandra {
                                             .and(ElementMatchers.not(ElementMatchers.nameContains("Internal")))
                                     )
                             )
-                    )
-                    .installOn(instrumentation);
+                    );
         } catch (Exception e) {
             if (LoggerStatusContent.isErrorsOrDebug()) {
                 System.err.println("Class com.datastax.oss.driver.api.core.CqlSession not found in ClassLoader.");
             }
         }
-        return null;
+        return agentBuilder;
     }
 
     public static class CassandraAdvice {

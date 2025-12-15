@@ -24,41 +24,38 @@ import static io.bitdive.parent.message_producer.MessageService.sendMessageDBEnd
 import static io.bitdive.parent.message_producer.MessageService.sendMessageDBStart;
 import static io.bitdive.parent.trasirovka.agent.utils.DataUtils.getaNullThrowable;
 import static io.bitdive.parent.trasirovka.agent.utils.SQLUtils.getCallableStatement;
+import static net.bytebuddy.matcher.ElementMatchers.nameContains;
+import static net.bytebuddy.matcher.ElementMatchers.nameStartsWith;
 
 public class ByteBuddyAgentSql {
 
-    public static ResettableClassFileTransformer init(Instrumentation instrumentation) {
-        return new AgentBuilder.Default()
-                .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
-                .type(typeDescription ->
-                        typeDescription.isAssignableTo(Statement.class) &&
-                                !typeDescription.getName().contains("Proxy") &&
-                                !typeDescription.getName().contains("Delegating") &&
-                                !typeDescription.getName().startsWith("com.zaxxer.hikari") &&
-                                !typeDescription.getName().contains("springframework")
-                )
-                .transform((builder, typeDescription, classLoader, module, dd) ->
-                        builder.visit(Advice.to(SqlAdvice.class)
+    public static AgentBuilder  init(AgentBuilder agentBuilder) {
+        return agentBuilder
+                .type(typeDescription -> typeDescription.isAssignableTo(Statement.class) &&
+                        !typeDescription.getName().contains("Proxy") &&
+                        !typeDescription.getName().contains("Delegating") &&
+                        !typeDescription.getName().startsWith("com.zaxxer.hikari") &&
+                        !typeDescription.getName().contains("springframework"))
+                .transform((builder, typeDescription, classLoader, module,
+                        dd) -> builder.visit(Advice.to(SqlAdvice.class)
                                 .on(ElementMatchers.named("executeQuery")
                                         .or(ElementMatchers.named("executeUpdate"))
                                         .or(ElementMatchers.named("execute"))
-                                        .and(ElementMatchers.not(ElementMatchers.nameContains("Internal")))
-                                )
+                                        .and(ElementMatchers.not(nameContains("Internal"))))
 
-                        )
-                )
-                .installOn(instrumentation);
+                ));
     }
 
     public static class SqlAdvice {
 
         @Advice.OnMethodEnter
         public static MethodContext onEnter(@Advice.This Object stmt,
-                                            @Advice.Origin Method method,
-                                            @Advice.AllArguments Object[] args) {
+                @Advice.Origin Method method,
+                @Advice.AllArguments Object[] args) {
 
             MethodContext context = new MethodContext();
-            if (LoggerStatusContent.getEnabledProfile()) return context;
+            if (LoggerStatusContent.getEnabledProfile())
+                return context;
             String sqlFromStatement = "";
 
             if (args.length == 1) {
@@ -90,8 +87,7 @@ public class ByteBuddyAgentSql {
                             connectionUrl,
                             OffsetDateTime.now(),
                             ContextManager.getMessageIdQueueNew(),
-                            MessageTypeEnum.SQL_START
-                    );
+                            MessageTypeEnum.SQL_START);
                 }
             } catch (Exception e) {
                 if (LoggerStatusContent.isErrorsOrDebug()) {
@@ -104,9 +100,10 @@ public class ByteBuddyAgentSql {
 
         @Advice.OnMethodExit(onThrowable = Throwable.class)
         public static void onExit(@Advice.Enter MethodContext context,
-                                  @Advice.Thrown Throwable throwable,
-                                  @Advice.Return Object returnValue) throws SQLException {
-            if (LoggerStatusContent.getEnabledProfile()) return;
+                @Advice.Thrown Throwable throwable,
+                @Advice.Return Object returnValue) throws SQLException {
+            if (LoggerStatusContent.getEnabledProfile())
+                return;
             try {
                 if (!context.flagNoMonitoring && !ContextManager.isMessageIdQueueEmpty()) {
 
@@ -116,8 +113,7 @@ public class ByteBuddyAgentSql {
                             context.spanId,
                             OffsetDateTime.now(),
                             getaNullThrowable(throwable),
-                            MessageTypeEnum.SQL_END
-                    );
+                            MessageTypeEnum.SQL_END);
                 }
             } catch (Exception e) {
                 if (LoggerStatusContent.isErrorsOrDebug()) {
@@ -133,7 +129,6 @@ public class ByteBuddyAgentSql {
             public String UUIDMessage;
         }
     }
-
 
     public static List<Map<String, Object>> readResultSet(ResultSet rs) throws SQLException {
         List<Map<String, Object>> rows = new ArrayList<>();

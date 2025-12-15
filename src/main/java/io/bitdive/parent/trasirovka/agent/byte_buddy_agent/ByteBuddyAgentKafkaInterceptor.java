@@ -24,16 +24,14 @@ public class ByteBuddyAgentKafkaInterceptor {
 
     private static final Map<Object, String> NC_BOOTSTRAP_MAP = new ConcurrentHashMap<>();
 
-    public static ResettableClassFileTransformer init(Instrumentation instrumentation) {
-        return new AgentBuilder.Default()
-                .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
+    public static AgentBuilder init(AgentBuilder agentBuilder) {
+        return agentBuilder
                 .type(ElementMatchers.named("org.apache.kafka.clients.NetworkClient"))
                 .transform((builder, typeDescription, classLoader, module, protectionDomain) ->
                         builder
                                 .method(ElementMatchers.named("processDisconnection"))
                                 .intercept(MethodDelegation.to(ProcessDisconnectionInterceptor.class))
-                )
-                .installOn(instrumentation);
+                );
     }
 
     public static class ProcessDisconnectionInterceptor {

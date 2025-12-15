@@ -32,15 +32,14 @@ public class ByteBuddyAgentSoap {
             "javax.xml.soap.SOAPMessage"
     };
 
-    public static ResettableClassFileTransformer init(Instrumentation inst) {
+    public static AgentBuilder init(AgentBuilder agentBuilder)  {
 
         ElementMatcher.Junction<TypeDescription> saajMatcher = ElementMatchers.none();
         for (String c : SAAJ_CONNECTION_CLASS) {
             saajMatcher = saajMatcher.or(ElementMatchers.hasSuperType(ElementMatchers.named(c)));
         }
 
-        return new AgentBuilder.Default()
-                .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
+        return agentBuilder
 
                 /* --- Spring-WS Template --- */
                 .type(ElementMatchers.named("org.springframework.ws.client.core.WebServiceTemplate"))
@@ -63,7 +62,7 @@ public class ByteBuddyAgentSoap {
                         b.visit(Advice.to(CxfAdvice.class)
                                 .on(ElementMatchers.named("invoke"))))
 
-                .installOn(inst);
+                ;
     }
 
     /* ------------------------------------------------------------------ */

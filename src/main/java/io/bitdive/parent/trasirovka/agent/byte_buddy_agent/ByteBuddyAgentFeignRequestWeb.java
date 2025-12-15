@@ -28,22 +28,22 @@ import static io.bitdive.parent.trasirovka.agent.utils.DataUtils.getaNullThrowab
 import static io.bitdive.parent.trasirovka.agent.utils.RestUtils.normalizeResponseBodyBytes;
 
 public class ByteBuddyAgentFeignRequestWeb {
-    public static ResettableClassFileTransformer init(Instrumentation instrumentation) {
+    public static AgentBuilder  init(AgentBuilder agentBuilder) {
         try {
             Class<?> clientClass = Class.forName("feign.Client");
-            return new AgentBuilder.Default()
+            return agentBuilder
                     .type(ElementMatchers.isSubTypeOf(clientClass)
                             .and(ElementMatchers.not(ElementMatchers.nameContains("loadbalancer")))
                     )
                     .transform((builder, typeDescription, classLoader, module, sd) ->
                             builder.method(ElementMatchers.named("execute"))
                                     .intercept(MethodDelegation.to(FeignClientInterceptor.class))
-                    ).installOn(instrumentation);
+                    );
         } catch (Exception e) {
             if (LoggerStatusContent.isErrorsOrDebug())
                 System.err.println("Not found class feign.Client in ClassLoader.");
         }
-        return null;
+        return agentBuilder;
     }
 
     public static class FeignClientInterceptor {

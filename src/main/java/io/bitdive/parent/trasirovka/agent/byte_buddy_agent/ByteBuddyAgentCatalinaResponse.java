@@ -14,21 +14,25 @@ import java.util.Optional;
 import static io.bitdive.parent.message_producer.MessageService.sendMessageWebResponse;
 
 public class ByteBuddyAgentCatalinaResponse {
-    public static ResettableClassFileTransformer init(Instrumentation instrumentation) {
-        return new AgentBuilder.Default()
+    public static AgentBuilder  init(AgentBuilder agentBuilder) {
+        return agentBuilder
                 .type(ElementMatchers.named("org.apache.catalina.connector.Request"))
                 .transform((builder, typeDescription, classLoader, module, dd) ->
                         builder.visit(Advice.to(CatalinaResponseInterceptor.class)
                                 .on(ElementMatchers.named("finishRequest")))
-                )
-                .installOn(instrumentation);
+                );
     }
 
     public static class CatalinaResponseInterceptor {
 
         @Advice.OnMethodEnter
         public static void onEnter(@Advice.This Object responseObj) {
-            if (LoggerStatusContent.getEnabledProfile()) return;
+            if (LoggerStatusContent.getEnabledProfile()) {
+                ContextManager.cleanupSafely();
+                io.bitdive.parent.trasirovka.agent.utils.RequestBodyCollector.cleanupSafely();
+                return;
+            }
+
             try {
                 if (Optional.of(ContextManager.getUrlStart()).orElse("").toLowerCase().contains("/actuator/")) return;
 

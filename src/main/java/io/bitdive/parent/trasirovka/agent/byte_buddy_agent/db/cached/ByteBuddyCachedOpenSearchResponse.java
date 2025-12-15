@@ -20,9 +20,8 @@ import java.util.concurrent.Callable;
 
 public final class ByteBuddyCachedOpenSearchResponse {
 
-    public static ResettableClassFileTransformer init(Instrumentation inst) {
-        return new AgentBuilder.Default()
-                .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
+    public static AgentBuilder init(AgentBuilder agentBuilder)  {
+        return agentBuilder
                 .type(ElementMatchers.named("org.opensearch.client.Response"))
                 .transform((b, td, cl, m, sd) ->
                         b.defineField("cachedBody", byte[].class, Visibility.PUBLIC)
@@ -31,7 +30,7 @@ public final class ByteBuddyCachedOpenSearchResponse {
                                 .intercept(MethodDelegation.to(GetEntityInterceptor.class))
                                 .method(ElementMatchers.named("getHeader").and(ElementMatchers.takesArguments(1)))
                                 .intercept(MethodDelegation.to(GetHeaderInterceptor.class)))
-                .installOn(inst);
+                ;
     }
 
     /*--------------------------------------------------------------*/

@@ -8,11 +8,10 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
-
 public class RestUtils {
 
-
-    public static String normalizeResponseBodyBytes(byte[] responseBodyBytes, Object responseHeaders, Charset responseCharset) {
+    public static String normalizeResponseBodyBytes(byte[] responseBodyBytes, Object responseHeaders,
+            Charset responseCharset) {
         if (responseBodyBytes == null || responseBodyBytes.length == 0) {
             return "";
         }
@@ -29,7 +28,8 @@ public class RestUtils {
     }
 
     private static boolean isFileResponse(Object headers) {
-        if (headers == null) return false;
+        if (headers == null)
+            return false;
 
         try {
             if (headers instanceof Map) {
@@ -56,7 +56,8 @@ public class RestUtils {
                     }
                 }
             } else {
-                // Если не Map, пытаемся использовать reflection (например, для Spring HttpHeaders)
+                // Если не Map, пытаемся использовать reflection (например, для Spring
+                // HttpHeaders)
                 Method keySetMethod = headers.getClass().getMethod("keySet");
                 Method getFirstMethod = headers.getClass().getMethod("getFirst", String.class);
 
@@ -81,7 +82,8 @@ public class RestUtils {
     }
 
     private static boolean isBinaryContent(Object headers) {
-        if (headers == null) return false;
+        if (headers == null)
+            return false;
 
         try {
             // Пробуем как Map (например, UnmodifiableMap<String, List<String>>)
@@ -131,19 +133,42 @@ public class RestUtils {
         return false;
     }
 
-
     public static String normalizeRequestBody(Object bodyObj) {
-        if (bodyObj == null) return "";
+        if (bodyObj == null)
+            return "";
+
+        // Специальная обработка для FastByteArrayOutputStream
+        if (bodyObj.getClass().getName().equals("org.springframework.util.FastByteArrayOutputStream")) {
+            try {
+                Method toByteArrayMethod = bodyObj.getClass().getMethod("toByteArray");
+                toByteArrayMethod.setAccessible(true);
+                byte[] bytes = (byte[]) toByteArrayMethod.invoke(bodyObj);
+                // Преобразуем байты в строку
+                if (bytes != null && bytes.length > 0) {
+                    return new String(bytes, Charset.defaultCharset());
+                }
+                return "";
+            } catch (Exception e) {
+                return "[Error reading FastByteArrayOutputStream: " + e.getMessage() + "]";
+            }
+        }
+
         // Если это массив байт
         if (bodyObj.getClass().isArray() && bodyObj.getClass().getComponentType() == byte.class) {
-            return "[byte array]";
+            byte[] bytes = (byte[]) bodyObj;
+            if (bytes.length > 0) {
+                return new String(bytes, Charset.defaultCharset());
+            }
+            return "";
         }
+
         // Если передаётся файл, MultipartFile или Resource (проверка по имени класса)
         if (bodyObj instanceof File
                 || bodyObj.getClass().getName().equals("org.springframework.web.multipart.MultipartFile")
                 || bodyObj.getClass().getName().equals("org.springframework.core.io.Resource")) {
             return "[file]";
         }
+
         return ReflectionUtils.objectToString(bodyObj);
     }
 }

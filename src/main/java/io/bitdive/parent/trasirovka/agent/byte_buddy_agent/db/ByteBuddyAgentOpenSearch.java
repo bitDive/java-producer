@@ -27,15 +27,14 @@ public final class ByteBuddyAgentOpenSearch {
     /*==================================================================*/
     /*  init                                                            */
     /*==================================================================*/
-    public static ResettableClassFileTransformer init(Instrumentation inst) {
-        return new AgentBuilder.Default()
-                .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
+    public static AgentBuilder init(AgentBuilder agentBuilder)  {
+        return agentBuilder
 
                 .type(ElementMatchers.named("org.opensearch.client.RestClient"))
                 .transform((b, td, cl, m, sd) ->
                         b.method(ElementMatchers.named("performRequest").and(ElementMatchers.takesArguments(1)))
                                 .intercept(MethodDelegation.to(PerformSync.class)))
-                .installOn(inst);
+                ;
     }
 
     /*==================================================================*/

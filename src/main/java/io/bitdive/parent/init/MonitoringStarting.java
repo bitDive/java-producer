@@ -1,6 +1,5 @@
 package io.bitdive.parent.init;
 
-
 import io.bitdive.parent.safety_config.VaultGettingConfig;
 import io.bitdive.parent.trasirovka.agent.byte_buddy_agent.*;
 import io.bitdive.parent.trasirovka.agent.byte_buddy_agent.db.*;
@@ -8,66 +7,102 @@ import io.bitdive.parent.trasirovka.agent.byte_buddy_agent.db.cached.ByteBuddyCa
 import io.bitdive.parent.trasirovka.agent.byte_buddy_agent.db.cached.ByteBuddyCachedOpenSearchResponse;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import net.bytebuddy.agent.ByteBuddyAgent;
+import net.bytebuddy.agent.builder.AgentBuilder;
 
 import java.lang.instrument.Instrumentation;
 import java.time.Duration;
 
+import static net.bytebuddy.matcher.ElementMatchers.nameStartsWith;
+
 public class MonitoringStarting {
-    public static void init() {
-        // КРИТИЧНО: Регистрация shutdown hook для очистки ресурсов
-        registerShutdownHook();
-        
-        VaultGettingConfig.initVaultConnect();
-        LoggerStatusContent.initMonitoringDelay(Duration.ofSeconds(60));
-        Instrumentation instrumentation = ByteBuddyAgent.install();
+        public static void init() {
+                registerShutdownHook();
 
-        ByteBuddyAgentBasic.init(instrumentation);
-        ByteBuddyAgentThread.init(instrumentation);
-        ByteBuddyAgentThreadCreator.init(instrumentation);
-        ByteBuddySimpleClientHttpResponse.init(instrumentation);
-        ByteBuddyAgentRestTemplateRequestWeb.init(instrumentation);
-        ByteBuddyAgentCoyoteInputStream.init(instrumentation);  // Captures raw body bytes
-        ByteBuddyAgentResponseWeb.init(instrumentation);
-        ByteBuddyAgentSql.init(instrumentation);
-        ByteBuddyAgentCatalinaResponse.init(instrumentation);
-        ByteBuddyAgentFeignRequestWeb.init(instrumentation);
-        ByteBuddyAgentSqlDriver.init(instrumentation);
-        ByteBuddyAgentKafkaSend.init(instrumentation);
-        ByteBuddyAgentKafkaInterceptor.init(instrumentation);
-        KafkaConsumerAgent.init(instrumentation);
+                VaultGettingConfig.initVaultConnect();
+                LoggerStatusContent.initMonitoringDelay(Duration.ofSeconds(60));
+                Instrumentation instrumentation = ByteBuddyAgent.install();
 
-        ByteBuddyAgentCassandra.init(instrumentation);
-        ByteBuddyAgentMongoDelegate.init(instrumentation);
-        ByteBuddyAgentRedis.init(instrumentation);
-        ByteBuddyAgentNeo4j.init(instrumentation);
+                AgentBuilder agentStandard = new AgentBuilder.Default()
+                                .ignore(
+                                                nameStartsWith("javax.")
+                                                                .or(nameStartsWith("sun."))
+                                                                .or(nameStartsWith("java."))
+                                                                .or(nameStartsWith("jdk."))
+                                                                .or(nameStartsWith("com.sun.")));
 
-        ByteBuddyAgentOpenSearch.init(instrumentation);
-        ByteBuddyCachedOpenSearchResponse.init(instrumentation);
-        ByteBuddyCachedOpenSearchReqest.init(instrumentation);
+                AgentBuilder agentStandardRetransformation = new AgentBuilder.Default()
+                                .ignore(
+                                                nameStartsWith("javax.")
+                                                                .or(nameStartsWith("sun."))
+                                                                .or(nameStartsWith("jdk."))
+                                                                .or(nameStartsWith("com.sun.")))
+                                .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION);
 
-        ByteBuddyAgentSoap.init(instrumentation);
+                agentStandard = ByteBuddyAgentThreadCreator.init(agentStandard);
+                agentStandard = ByteBuddySimpleClientHttpResponse.init(agentStandard);
+                agentStandard = ByteBuddyAgentRestTemplateRequestWeb.init(agentStandard);
+                agentStandard = ByteBuddyAgentCatalinaResponse.init(agentStandard);
+                agentStandard = ByteBuddyAgentFeignRequestWeb.init(agentStandard);
 
-        ByteBuddyAgentSpringRawWs.init(instrumentation);
-    }
+                agentStandardRetransformation = ByteBuddyAgentSqlDriver.init(agentStandardRetransformation);
+                agentStandardRetransformation = ByteBuddyAgentSqlDriver.init(agentStandardRetransformation);
 
-    /**
-     * КРИТИЧНО: Регистрация shutdown hook для корректной остановки всех ресурсов
-     */
-    private static void registerShutdownHook() {
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            try {
-                // Останавливаем Vault scheduler
-                VaultGettingConfig.shutdown();
-            } catch (Exception e) {
-                System.err.println("Error shutting down Vault scheduler: " + e.getMessage());
-            }
+                agentStandardRetransformation = ByteBuddyAgentSpringRawWs.init(agentStandardRetransformation);
 
-            try {
-                // Останавливаем monitoring delay scheduler (если еще работает)
-                LoggerStatusContent.shutdownScheduler();
-            } catch (Exception e) {
-                System.err.println("Error shutting down monitoring scheduler: " + e.getMessage());
-            }
-        }, "BitDive-Shutdown-Hook"));
-    }
+                agentStandardRetransformation = ByteBuddyAgentBasic.init(agentStandardRetransformation);
+
+                agentStandardRetransformation = ByteBuddyAgentCoyoteInputStream.init(agentStandardRetransformation);
+                agentStandardRetransformation = ByteBuddyAgentResponseWeb.init(agentStandardRetransformation);
+                agentStandardRetransformation = ByteBuddyAgentSql.init(agentStandardRetransformation);
+
+                agentStandardRetransformation = ByteBuddyAgentKafkaSend.init(agentStandardRetransformation);
+                agentStandardRetransformation = ByteBuddyAgentKafkaInterceptor.init(agentStandardRetransformation);
+                agentStandardRetransformation = KafkaConsumerAgent.init(agentStandardRetransformation);
+
+                // Только автоматическая проверка драйверов БД - безопасная оптимизация
+                agentStandardRetransformation = OptimizedDbAgents.initCassandra(agentStandardRetransformation);
+                agentStandardRetransformation = OptimizedDbAgents.initMongo(agentStandardRetransformation);
+                agentStandardRetransformation = OptimizedDbAgents.initRedis(agentStandardRetransformation);
+                agentStandardRetransformation = OptimizedDbAgents.initNeo4j(agentStandardRetransformation);
+
+                agentStandardRetransformation = ByteBuddyAgentOpenSearch.init(agentStandardRetransformation);
+                agentStandardRetransformation = ByteBuddyCachedOpenSearchResponse.init(agentStandardRetransformation);
+                agentStandardRetransformation = ByteBuddyCachedOpenSearchReqest.init(agentStandardRetransformation);
+
+                agentStandardRetransformation = ByteBuddyAgentSoap.init(agentStandardRetransformation);
+
+                ByteBuddyAgentThread.init(instrumentation);
+
+                agentStandard.installOn(instrumentation);
+                agentStandardRetransformation.installOn(instrumentation);
+
+        }
+
+        /**
+         * КРИТИЧНО: Регистрация shutdown hook для корректной остановки всех ресурсов
+         */
+        private static void registerShutdownHook() {
+                Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                        try {
+                                // Останавливаем Vault scheduler
+                                VaultGettingConfig.shutdown();
+                        } catch (Exception e) {
+                                System.err.println("Error shutting down Vault scheduler: " + e.getMessage());
+                        }
+
+                        try {
+                                // Останавливаем monitoring delay scheduler (если еще работает)
+                                LoggerStatusContent.shutdownScheduler();
+                        } catch (Exception e) {
+                                System.err.println("Error shutting down monitoring scheduler: " + e.getMessage());
+                        }
+
+                        try {
+                                // Останавливаем lazy DB agent loader scheduler
+                                LazyDbAgentLoader.shutdown();
+                        } catch (Exception e) {
+                                System.err.println("Error shutting down lazy DB agent loader: " + e.getMessage());
+                        }
+                }, "BitDive-Shutdown-Hook"));
+        }
 }

@@ -26,9 +26,8 @@ import static net.bytebuddy.implementation.bytecode.assign.Assigner.Typing.DYNAM
 
 public class ByteBuddyAgentRedis {
 
-    public static ResettableClassFileTransformer init(Instrumentation inst) {
-        return new AgentBuilder.Default()
-                .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
+    public static AgentBuilder init(AgentBuilder agentBuilder)  {
+        return agentBuilder
 
                 // 2) Jedis Commands
                 .type(ElementMatchers.hasSuperType(
@@ -68,9 +67,7 @@ public class ByteBuddyAgentRedis {
                                         .and(ElementMatchers.not(ElementMatchers.nameStartsWith("close")))
                                         .and(ElementMatchers.not(ElementMatchers.nameStartsWith("getStatefulConnection")))
                                 )
-                        ))
-
-                .installOn(inst);
+                        ));
     }
 
     public static class RedisContext {

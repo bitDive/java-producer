@@ -16,15 +16,14 @@ import static io.bitdive.parent.message_producer.MessageService.sendMessageCriti
 
 public class ByteBuddyAgentSqlDriver {
 
-    public static ResettableClassFileTransformer init(Instrumentation instrumentation) {
-        return new AgentBuilder.Default()
+    public static AgentBuilder  init(AgentBuilder agentBuilder) {
+        return agentBuilder
                 .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
                 .type(ElementMatchers.isSubTypeOf(Driver.class))
                 .transform((builder, typeDescription, classLoader, module, protectionDomain) ->
                         builder.method(ElementMatchers.named("connect"))
                                 .intercept(MethodDelegation.to(DriverInterceptor.class))
-                )
-                .installOn(instrumentation);
+                );
     }
 
     public static class DriverInterceptor {

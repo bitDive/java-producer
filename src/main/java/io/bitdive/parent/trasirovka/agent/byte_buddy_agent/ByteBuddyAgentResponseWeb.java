@@ -15,10 +15,9 @@ import java.util.*;
 
 
 public class ByteBuddyAgentResponseWeb {
-    public static ResettableClassFileTransformer init(Instrumentation instrumentation) {
+    public static AgentBuilder  init(AgentBuilder agentBuilder) {
         try {
-            return new AgentBuilder.Default()
-                    .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
+            return agentBuilder
                     .type(ElementMatchers.named("org.apache.catalina.connector.CoyoteAdapter"))
                     .transform((builder, typeDescription, classLoader, module, dd) ->
                             builder.visit(Advice.to(CoyoteAdapterAdvice.class)
@@ -26,12 +25,12 @@ public class ByteBuddyAgentResponseWeb {
                                             .and(ElementMatchers.takesArguments(2))
                                     )
                             )
-                    ).installOn(instrumentation);
+                    );
         } catch (Exception e) {
             if (LoggerStatusContent.isErrorsOrDebug())
                 System.err.println("not found class org.apache.catalina.connector.CoyoteAdapte");
         }
-        return null;
+        return agentBuilder;
 
     }
 

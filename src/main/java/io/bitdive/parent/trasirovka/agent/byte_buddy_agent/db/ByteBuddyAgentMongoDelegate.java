@@ -28,14 +28,12 @@ public class ByteBuddyAgentMongoDelegate {
 
     private static final String TARGET = "com.mongodb.client.internal.MongoClientDelegate$DelegateOperationExecutor";
 
-    public static ResettableClassFileTransformer init(Instrumentation inst) {
-        return new AgentBuilder.Default()
-                .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
+    public static AgentBuilder init(AgentBuilder agentBuilder)  {
+        return agentBuilder
                 .type(named(TARGET))
                 .transform((builder, td, cl, module, pd) ->
                         builder.visit(Advice.to(ExecAdvice.class)
-                                .on(named("execute"))))
-                .installOn(inst);
+                                .on(named("execute"))));
     }
 
 

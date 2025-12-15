@@ -22,9 +22,8 @@ import static net.bytebuddy.matcher.ElementMatchers.*;
 
 public class ByteBuddyAgentKafkaSend {
 
-    public static ResettableClassFileTransformer init(Instrumentation instrumentation) {
-        return new AgentBuilder.Default()
-                .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
+    public static AgentBuilder  init(AgentBuilder agentBuilder) {
+        return agentBuilder
                 .type(typeDescription ->
                         Objects.equals(typeDescription.getCanonicalName(), "org.apache.kafka.clients.producer.KafkaProducer"))
                 .transform((builder, typeDescription, classLoader, module, dd) ->
@@ -33,8 +32,7 @@ public class ByteBuddyAgentKafkaSend {
                                         .on(named("send")
                                                 .and(takesArguments(2))
                                                 .and(returns(named("java.util.concurrent.Future")))))
-                )
-                .installOn(instrumentation);
+                );
     }
 
     public static class SendAdviceKafka {

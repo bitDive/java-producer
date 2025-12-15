@@ -30,20 +30,21 @@ import static io.bitdive.parent.trasirovka.agent.utils.DataUtils.getaNullThrowab
 import static io.bitdive.parent.trasirovka.agent.utils.RestUtils.normalizeResponseBodyBytes;
 
 public class ByteBuddyAgentRestTemplateRequestWeb {
-    public static ResettableClassFileTransformer init(Instrumentation instrumentation) {
+    public static AgentBuilder  init(AgentBuilder agentBuilder) {
         try {
-            Class<?> clientHttpRequestClass = Class.forName("org.springframework.http.client.ClientHttpRequest");
-            return new AgentBuilder.Default()
-                    .type(ElementMatchers.isSubTypeOf(clientHttpRequestClass))
+            return agentBuilder
+                    .type(ElementMatchers.hasSuperType(
+                            ElementMatchers.named("org.springframework.http.client.ClientHttpRequest")
+                    ))
                     .transform((builder, typeDescription, classLoader, module, dd) ->
                             builder.method(ElementMatchers.named("execute"))
                                     .intercept(MethodDelegation.to(ResponseWeRestTemplateInterceptor.class))
-                    ).installOn(instrumentation);
+                    );
         } catch (Exception e) {
             if (LoggerStatusContent.isErrorsOrDebug())
                 System.err.println("Not found class org.springframework.http.client.ClientHttpRequest in ClassLoader.");
         }
-        return null;
+        return agentBuilder;
     }
 
     public static class ResponseWeRestTemplateInterceptor {
