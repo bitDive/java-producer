@@ -5,6 +5,7 @@ import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.ContextManager;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import io.bitdive.parent.trasirovka.agent.utils.MessageTypeEnum;
+import io.bitdive.parent.trasirovka.agent.utils.ReflectionUtils;
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.agent.builder.ResettableClassFileTransformer;
 import net.bytebuddy.asm.Advice;
@@ -85,7 +86,7 @@ public class ByteBuddyAgentMongoDelegate {
                         ctx.traceId,
                         ctx.spanId,
                         OffsetDateTime.now(),
-                        getaNullThrowable(error),
+                        ReflectionUtils.objectToString(error),
                         MessageTypeEnum.MONGO_DB_END
                 );
             }

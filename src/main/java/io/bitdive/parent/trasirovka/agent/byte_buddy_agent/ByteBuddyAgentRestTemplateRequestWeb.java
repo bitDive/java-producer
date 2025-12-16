@@ -198,7 +198,7 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
                     }
 
                     if (thrown != null) {
-                        errorCall = getaNullThrowable(thrown);
+                        errorCall = ReflectionUtils.objectToString(thrown);
                     }
                     if (url != null && !url.contains("eureka/apps")) {
                         sendMessageRequestUrl(

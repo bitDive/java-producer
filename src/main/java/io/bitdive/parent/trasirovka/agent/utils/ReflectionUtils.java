@@ -10,8 +10,6 @@ import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.fasterxml.jackson.module.afterburner.AfterburnerModule;
-
-import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.jsontype.impl.StdTypeResolverBuilder;
 import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.objectMaperConfig.*;
@@ -57,6 +55,9 @@ public class ReflectionUtils {
         SimpleModule ignoreModule = new SimpleModule();
         ignoreModule.setSerializerModifier(new PackageBasedSerializerModifier(EXCLUDED_PACKAGES));
         mapper.registerModule(ignoreModule);
+
+        // Модуль для компактной сериализации исключений (Throwable)
+        mapper.registerModule(new ThrowableSerializerModule());
 
         mapper.registerModule(new FlowDataToPlaceholderModule());
 

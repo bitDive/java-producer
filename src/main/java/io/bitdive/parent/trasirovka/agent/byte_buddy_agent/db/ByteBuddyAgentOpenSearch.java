@@ -84,7 +84,7 @@ public final class ByteBuddyAgentOpenSearch {
             cachedBodyFieldRequest.setAccessible(true);
             byte[] responseBodyBytesRequest = (byte[]) cachedBodyFieldRequest.get(request);
 
-            String reqBody = responseBodyBytesRequest != null ? new String(responseBodyBytesRequest, Charset.defaultCharset()) : "";
+            String reqBody = toSafeBodyString(responseBodyBytesRequest);
 
 
             OffsetDateTime start = OffsetDateTime.now();
@@ -116,9 +116,7 @@ public final class ByteBuddyAgentOpenSearch {
                         cachedBodyField.setAccessible(true);
                         byte[] responseBodyBytes = (byte[]) cachedBodyField.get(resp);
 
-                        if (responseBodyBytes != null) {
-                            respBody = new String(responseBodyBytes, Charset.defaultCharset());
-                        }
+                        respBody = toSafeBodyString(responseBodyBytes);
                     } catch (NoSuchFieldException e) {
                         /* Если поле cachedBody не найдено, значит ByteBuddyCachedOpenSearchResponse не инструментировал этот класс */
                         if (LoggerStatusContent.isErrorsOrDebug()) {
@@ -130,7 +128,7 @@ public final class ByteBuddyAgentOpenSearch {
                 }
                 String errorCallMessage = "";
                 if (err != null)
-                    errorCallMessage = DataUtils.getaNullThrowable(err);
+                    errorCallMessage = ReflectionUtils.objectToString(err);
 
                 sendMessageRequestUrl(
                         UuidCreator.getTimeBased().toString(),
@@ -155,6 +153,51 @@ public final class ByteBuddyAgentOpenSearch {
     /*==================================================================*/
     /*  Helpers                                                         */
     /*==================================================================*/
+    /**
+     * Безопасное преобразование тела в строку:
+     * - null → ""
+     * - бинарные данные → краткое описание "[binary content, size=... bytes]"
+     * - очень большие данные → первые N символов + пометка, что обрезано
+     */
+    private static String toSafeBodyString(byte[] body) {
+        if (body == null) {
+            return "";
+        }
+
+        final int maxPreviewBytes = 4096; // можно вынести в конфиг при необходимости
+
+        // Проверяем, похоже ли содержимое на бинарное
+        if (isLikelyBinary(body)) {
+            return "[binary content, size=" + body.length + " bytes]";
+        }
+
+        int len = Math.min(body.length, maxPreviewBytes);
+        String text = new String(body, 0, len, Charset.defaultCharset());
+
+        if (body.length > maxPreviewBytes) {
+            return text + "... [truncated, totalBytes=" + body.length + "]";
+        }
+
+        return text;
+    }
+
+    /**
+     * Примитивная эвристика: много управляющих символов → бинарный контент.
+     */
+    private static boolean isLikelyBinary(byte[] body) {
+        int sample = Math.min(body.length, 512);
+        int controlChars = 0;
+        for (int i = 0; i < sample; i++) {
+            int b = body[i] & 0xFF;
+            // Разрешаем стандартные управляющие: таб, перевод строки, возврат каретки
+            if (b < 0x09 || (b > 0x0D && b < 0x20)) {
+                controlChars++;
+            }
+        }
+        // Если больше 10% байт выглядят как "жёсткие" управляющие — считаем бинарным
+        return controlChars > sample / 10;
+    }
+
     private static String extractHost(Object restClient) {
         try {
             // Получаем nodeTuple из RestClient

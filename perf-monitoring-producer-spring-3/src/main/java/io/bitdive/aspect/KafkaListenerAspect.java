@@ -104,7 +104,7 @@ public class KafkaListenerAspect {
                     topicName,
                     groupName,
                     KafkaAgentStorage.getBootstrap(),
-                    getaNullThrowable(thrown),
+                    ReflectionUtils.objectToString(thrown),
                     ContextManager.getMethodInpointName(),
                     ContextManager.getMessageInpointId(),
                     ContextManager.getClassInpointName()

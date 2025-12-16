@@ -65,7 +65,7 @@ public class SchedulerAspect {
             sendMessageEnd(
                     UUIDMessage,
                     OffsetDateTime.now(),
-                    getaNullThrowable(thrown),
+                    ReflectionUtils.objectToString(thrown),
                     ReflectionUtils.objectToString(methodReturnConvert(retVal)),
                     ContextManager.getTraceId(),
                     ContextManager.getSpanId()

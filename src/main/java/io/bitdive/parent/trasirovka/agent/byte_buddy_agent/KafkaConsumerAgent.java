@@ -28,7 +28,7 @@ public class KafkaConsumerAgent {
     public static class KafkaConsumerConstructorAdvice {
         @Advice.OnMethodEnter
         public static void onEnter(@Advice.AllArguments Object[] allArgs) {
-            if (LoggerStatusContent.getEnabledProfile()) return;
+           // if (LoggerStatusContent.getEnabledProfile()) return;
             try {
                 Object bootstrapServers = null;
                 if (allArgs.length > 0) {

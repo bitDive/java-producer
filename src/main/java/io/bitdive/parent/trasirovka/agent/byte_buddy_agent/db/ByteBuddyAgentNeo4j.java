@@ -180,7 +180,7 @@ public class ByteBuddyAgentNeo4j {
                             ctx.traceId,
                             ctx.spanId,
                             OffsetDateTime.now(),
-                            getaNullThrowable(t),
+                            ReflectionUtils.objectToString(t),
                             NEO4J_DB_END
                     );
                 } catch (Exception e) {

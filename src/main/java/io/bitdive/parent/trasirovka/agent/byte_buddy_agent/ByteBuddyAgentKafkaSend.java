@@ -120,7 +120,7 @@ public class ByteBuddyAgentKafkaSend {
                 String errorMessage = "";
 
                 if (throwable != null)
-                    errorMessage = throwable.getMessage();
+                    errorMessage = ReflectionUtils.objectToString(throwable);
                 sendMessageKafkaSend(
                         context.UUIDMessage,
                         context.spanId,

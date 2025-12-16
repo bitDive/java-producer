@@ -123,7 +123,7 @@ public class ByteBuddyAgentRedis {
                         ctx.traceId,
                         ctx.spanId,
                         OffsetDateTime.now(),
-                        getaNullThrowable(throwable),
+                        ReflectionUtils.objectToString(throwable),
                         MessageTypeEnum.REDIS_DB_END,
                         ReflectionUtils.objectToString(returnValue)
                 );

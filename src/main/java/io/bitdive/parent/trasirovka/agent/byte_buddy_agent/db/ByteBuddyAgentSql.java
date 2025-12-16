@@ -2,10 +2,7 @@ package io.bitdive.parent.trasirovka.agent.byte_buddy_agent.db;
 
 import com.github.f4b6a3.uuid.UuidCreator;
 import io.bitdive.parent.parserConfig.YamlParserConfig;
-import io.bitdive.parent.trasirovka.agent.utils.ContextManager;
-import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
-import io.bitdive.parent.trasirovka.agent.utils.MessageTypeEnum;
-import io.bitdive.parent.trasirovka.agent.utils.SQLUtils;
+import io.bitdive.parent.trasirovka.agent.utils.*;
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.agent.builder.ResettableClassFileTransformer;
 import net.bytebuddy.asm.Advice;
@@ -112,7 +109,7 @@ public class ByteBuddyAgentSql {
                             context.traceId,
                             context.spanId,
                             OffsetDateTime.now(),
-                            getaNullThrowable(throwable),
+                            ReflectionUtils.objectToString(throwable),
                             MessageTypeEnum.SQL_END);
                 }
             } catch (Exception e) {

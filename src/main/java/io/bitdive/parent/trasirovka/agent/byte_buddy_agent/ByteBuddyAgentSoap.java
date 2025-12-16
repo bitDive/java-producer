@@ -116,7 +116,7 @@ public class ByteBuddyAgentSoap {
                         ctx.spanId,
                         soapResponse,
                         OffsetDateTime.now(),
-                        DataUtils.getaNullThrowable(t),
+                        ReflectionUtils.objectToString(t),
                         MessageTypeEnum.SOAP_END);
             }
         }

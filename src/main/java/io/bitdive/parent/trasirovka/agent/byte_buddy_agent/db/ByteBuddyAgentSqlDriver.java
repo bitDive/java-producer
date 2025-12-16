@@ -1,6 +1,7 @@
 package io.bitdive.parent.trasirovka.agent.byte_buddy_agent.db;
 
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
+import io.bitdive.parent.trasirovka.agent.utils.ReflectionUtils;
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.agent.builder.ResettableClassFileTransformer;
 import net.bytebuddy.implementation.MethodDelegation;
@@ -41,7 +42,7 @@ public class ByteBuddyAgentSqlDriver {
             try {
                 return zuper.call();
             } catch (Exception t) {
-                sendMessageCriticalDBError(url, t.getMessage());
+                sendMessageCriticalDBError(url, ReflectionUtils.objectToString(t));
                 throw t;
             }
         }

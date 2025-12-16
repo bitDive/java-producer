@@ -80,7 +80,7 @@ public class ByteBuddyAgentSpringRawWs {
                         OffsetDateTime.now(),
                         destination,
                         argsString,
-                        getaNullThrowable(thrown),
+                        ReflectionUtils.objectToString(thrown),
                         true,
                         ContextManager.getMethodInpointName(),
                         ContextManager.getMessageInpointId(),

@@ -301,7 +301,7 @@ public class ByteBuddyAgentBasic  {
 
                     String errorCallMessage = "";
                     if (thrown != null) {
-                        errorCallMessage = getaNullThrowable(thrown);
+                        errorCallMessage = ReflectionUtils.objectToString(thrown);
                     }
 
                     sendMessageEnd(

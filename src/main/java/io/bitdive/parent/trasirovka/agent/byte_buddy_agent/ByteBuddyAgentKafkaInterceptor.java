@@ -3,6 +3,7 @@ package io.bitdive.parent.trasirovka.agent.byte_buddy_agent;
 import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.KafkaAgentStorage;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
+import io.bitdive.parent.trasirovka.agent.utils.ReflectionUtils;
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.agent.builder.ResettableClassFileTransformer;
 import net.bytebuddy.implementation.MethodDelegation;
@@ -79,7 +80,7 @@ public class ByteBuddyAgentKafkaInterceptor {
                 Object exceptionObj = getExceptionMethod.invoke(disconnectState);
 
                 String exceptionMsg = (exceptionObj instanceof Throwable)
-                        ? ((Throwable) exceptionObj).getMessage()
+                        ? ReflectionUtils.objectToString((Throwable) exceptionObj)
                         : null;
 
                 switch (stateName) {
