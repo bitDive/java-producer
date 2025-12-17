@@ -17,104 +17,78 @@ import java.util.Set;
 /**
  * Модуль для компактной сериализации исключений (Throwable).
  * 
- * <p><b>Проблема:</b> Полная сериализация исключений создает огромные JSON (~10-100 KB),
- * включая весь стектрейс, внутренние поля, циклические ссылки.
+ * <p><b>Подход:</b> Сериализуем только ПОЛЯ классов исключений через рефлексию,
+ * исключая лишние внутренние поля JVM (stackTrace, backtrace, suppressedExceptions).
  * 
- * <p><b>Решение:</b> Сериализуем только критически важные данные:
+ * <p><b>Что включается:</b>
  * <ul>
- *   <li><b>Тип исключения</b> - для идентификации типа ошибки</li>
- *   <li><b>Сообщение</b> - описание ошибки</li>
- *   <li><b>StackTrace (ограниченный)</b> - первые N элементов, чтобы понять МЕСТО возникновения ошибки</li>
- *   <li><b>Cause (ограниченный)</b> - цепочка причин для понимания корневой проблемы</li>
+ *   <li>Все поля класса исключения (detailMessage, errorCode, sqlState и т.д.)</li>
+ *   <li>Поле cause (с ограничением глубины вложенности)</li>
+ *   <li>Type ID (@class) для идентификации типа</li>
  * </ul>
  * 
- * <p><b>Примеры использования:</b>
+ * <p><b>Что исключается:</b>
+ * <ul>
+ *   <li>stackTrace - огромный массив, не нужен для мониторинга</li>
+ *   <li>backtrace, depth - внутренние поля JVM</li>
+ *   <li>suppressedExceptions - редко используется</li>
+ *   <li>static и transient поля</li>
+ * </ul>
+ * 
+ * <p><b>Пример использования:</b>
  * <pre>{@code
- * // По умолчанию (оптимально для продакшена): 3 элемента стека
+ * // По умолчанию (минимально, 1 уровень вложенности):
  * mapper.registerModule(new ThrowableSerializerModule());
  * 
- * // Минимальная сериализация (только тип и сообщение):
- * mapper.registerModule(ThrowableSerializerModule.minimal());
- * 
- * // Расширенная отладка (10 элементов стека):
- * mapper.registerModule(ThrowableSerializerModule.debug());
- * 
- * // Кастомная конфигурация:
- * mapper.registerModule(new ThrowableSerializerModule(5, 3, 2));
+ * // С глубокой цепочкой причин (3 уровня):
+ * mapper.registerModule(new ThrowableSerializerModule(3));
  * }</pre>
  */
 public class ThrowableSerializerModule extends SimpleModule {
 
     /**
-     * Конструктор с параметрами по умолчанию (минимальный для продакшена):
-     * - 0 элементов стектрейса (не нужен для мониторинга)
-     * - 1 уровень причины (только прямая cause)
-     * - 0 подавленных исключений
+     * Конструктор с параметрами по умолчанию:
+     * - 1 уровень вложенности для cause
      * 
-     * Включает: тип, сообщение, additionalFields (errorCode, sqlState и т.д.)
-     * Достаточно для unit-тестов и мониторинга.
+     * Сериализует все поля класса исключения (detailMessage, errorCode, sqlState и т.д.)
      */
     public ThrowableSerializerModule() {
-        this(0, 1, 0);
+        this(1);
     }
 
     /**
-     * Создает модуль для отладки с стектрейсом (первый элемент).
-     * Полезно, когда нужно знать ТОЧНОЕ место ошибки.
-     * 
-     * @return модуль с одним элементом стека для определения места ошибки
-     */
-    public static ThrowableSerializerModule withStackTrace() {
-        return new ThrowableSerializerModule(1, 1, 0);
-    }
-
-    /**
-     * Создает модуль с расширенной сериализацией для глубокой отладки.
-     * Включает больше деталей: 10 элементов стека, 3 уровня причин.
-     * 
-     * @return модуль с расширенными данными для детальной отладки
-     */
-    public static ThrowableSerializerModule debug() {
-        return new ThrowableSerializerModule(10, 3, 3);
-    }
-
-    /**
-     * Конструктор с настраиваемыми параметрами.
+     * Конструктор с настраиваемой глубиной вложенности.
      *
-     * @param maxStackTraceElements  максимальное количество элементов stackTrace (0 = не включать)
-     * @param maxCauseDepth         максимальная глубина вложенности причин (0 = не включать)
-     * @param maxSuppressedExceptions максимальное количество подавленных исключений (0 = не включать)
+     * @param maxCauseDepth максимальная глубина вложенности причин (cause)
      */
-    public ThrowableSerializerModule(int maxStackTraceElements, int maxCauseDepth, int maxSuppressedExceptions) {
+    public ThrowableSerializerModule(int maxCauseDepth) {
         super("throwable-compact-serializer");
-        addSerializer(Throwable.class, new CompactThrowableSerializer(
-                maxStackTraceElements,
-                maxCauseDepth,
-                maxSuppressedExceptions
-        ));
+        addSerializer(Throwable.class, new CompactThrowableSerializer(maxCauseDepth));
     }
 
     /**
      * Компактный сериализатор для Throwable.
-     * Сериализует исключение в структуру с важными полями, но без избыточных данных.
+     * Сериализует только поля класса исключения, исключая лишние внутренние поля.
      */
     private static class CompactThrowableSerializer extends JsonSerializer<Throwable> {
 
-        // Стандартные поля Throwable, которые обрабатываются отдельно (не нужно сериализовать через рефлексию)
+        // Поля Throwable, которые НЕ нужно сериализовать (лишние/внутренние)
         private static final Set<String> EXCLUDED_FIELD_NAMES = new HashSet<>(Arrays.asList(
-                "stackTrace", "suppressedExceptions", "cause", "detailMessage", 
-                "backtrace", "depth", "UNASSIGNED_STACK", "SUPPRESSED_SENTINEL",
-                "CAUSE_CAPTION", "SUPPRESSED_CAPTION", "serialVersionUID"
+                "stackTrace",              // Огромный массив, не нужен
+                "suppressedExceptions",    // Редко используется
+                "backtrace",               // Внутреннее поле JVM
+                "depth",                   // Внутреннее поле JVM
+                "UNASSIGNED_STACK",        // Константа
+                "SUPPRESSED_SENTINEL",     // Константа
+                "CAUSE_CAPTION",           // Константа
+                "SUPPRESSED_CAPTION",      // Константа
+                "serialVersionUID"         // Служебное
         ));
 
-        private final int maxStackTraceElements;
         private final int maxCauseDepth;
-        private final int maxSuppressedExceptions;
 
-        public CompactThrowableSerializer(int maxStackTraceElements, int maxCauseDepth, int maxSuppressedExceptions) {
-            this.maxStackTraceElements = maxStackTraceElements;
+        public CompactThrowableSerializer(int maxCauseDepth) {
             this.maxCauseDepth = maxCauseDepth;
-            this.maxSuppressedExceptions = maxSuppressedExceptions;
         }
 
         @Override
@@ -124,7 +98,9 @@ public class ThrowableSerializerModule extends SimpleModule {
                 return;
             }
 
-            serializeThrowable(throwable, gen, 0);
+            gen.writeStartObject();
+            serializeFields(throwable, gen, 0);
+            gen.writeEndObject();
         }
 
         @Override
@@ -134,129 +110,35 @@ public class ThrowableSerializerModule extends SimpleModule {
                 return;
             }
 
-            // TypeSerializer обрабатывает создание объекта и запись @type
-            // Записываем префикс типа (например, {"@type": "..."})
+            // TypeSerializer создает объект и записывает @class
             typeSer.writeTypePrefix(gen, 
                 typeSer.typeId(throwable, JsonToken.START_OBJECT));
             
-            // Сериализуем тело исключения
-            serializeThrowableBody(throwable, gen, 0);
+            // Сериализуем поля класса
+            serializeFields(throwable, gen, 0);
             
-            // Записываем суффикс типа
+            // Закрываем объект
             typeSer.writeTypeSuffix(gen, 
                 typeSer.typeId(throwable, JsonToken.END_OBJECT));
         }
 
-        private void serializeThrowable(Throwable throwable, JsonGenerator gen, int depth) throws IOException {
-            gen.writeStartObject();
-            serializeThrowableBody(throwable, gen, depth);
-            gen.writeEndObject();
-        }
-
         /**
-         * Сериализует тело исключения (без оборачивающего объекта).
-         * Используется как в обычной сериализации, так и при Type ID handling.
+         * Сериализует поля класса исключения через рефлексию.
+         * Исключает лишние поля (stackTrace, backtrace и т.д.)
          */
-        private void serializeThrowableBody(Throwable throwable, JsonGenerator gen, int depth) throws IOException {
-            // Тип исключения
-            gen.writeStringField("exceptionType", throwable.getClass().getName());
-
-            // Сообщение
-            String message = throwable.getMessage();
-            gen.writeStringField("message", message != null ? message : "");
-
-            // Локализованное сообщение (если отличается)
-            String localizedMessage = throwable.getLocalizedMessage();
-            if (localizedMessage != null && !localizedMessage.equals(message)) {
-                gen.writeStringField("localizedMessage", localizedMessage);
-            }
-
-            // Дополнительные поля исключения (через рефлексию)
-            serializeAdditionalFields(throwable, gen);
-
-            // StackTrace (ограниченный) - только если настроено включать
-            if (maxStackTraceElements > 0) {
-                StackTraceElement[] stackTrace = throwable.getStackTrace();
-                if (stackTrace != null && stackTrace.length > 0) {
-                    gen.writeArrayFieldStart("stackTrace");
-                    
-                    int limit = Math.min(stackTrace.length, maxStackTraceElements);
-                    for (int i = 0; i < limit; i++) {
-                        StackTraceElement element = stackTrace[i];
-                        gen.writeStartObject();
-                        gen.writeStringField("class", element.getClassName());
-                        gen.writeStringField("method", element.getMethodName());
-                        String fileName = element.getFileName();
-                        if (fileName != null) {
-                            gen.writeStringField("file", fileName);
-                        }
-                        gen.writeNumberField("line", element.getLineNumber());
-                        gen.writeEndObject();
-                    }
-                    
-                    // Если стектрейс был обрезан, добавляем информацию
-                    if (stackTrace.length > maxStackTraceElements) {
-                        gen.writeStartObject();
-                        gen.writeStringField("info", "... " + (stackTrace.length - maxStackTraceElements) + " more elements");
-                        gen.writeEndObject();
-                    }
-                    
-                    gen.writeEndArray();
-                }
-            }
-
-            // Причина (cause) - рекурсивно, но с ограничением глубины
-            Throwable cause = throwable.getCause();
-            if (cause != null && cause != throwable && depth < maxCauseDepth) {
-                gen.writeFieldName("cause");
-                serializeThrowable(cause, gen, depth + 1);
-            } else if (depth >= maxCauseDepth && cause != null && cause != throwable) {
-                gen.writeStringField("causeInfo", "Cause depth limit reached: " + cause.getClass().getName() + ": " + cause.getMessage());
-            }
-
-            // Подавленные исключения (suppressed) - только если настроено включать
-            if (maxSuppressedExceptions > 0) {
-                Throwable[] suppressed = throwable.getSuppressed();
-                if (suppressed != null && suppressed.length > 0) {
-                    gen.writeArrayFieldStart("suppressed");
-                    
-                    int suppressedLimit = Math.min(suppressed.length, maxSuppressedExceptions);
-                    for (int i = 0; i < suppressedLimit; i++) {
-                        serializeThrowable(suppressed[i], gen, depth + 1);
-                    }
-                    
-                    if (suppressed.length > maxSuppressedExceptions) {
-                        gen.writeStartObject();
-                        gen.writeStringField("info", "... " + (suppressed.length - maxSuppressedExceptions) + " more suppressed");
-                        gen.writeEndObject();
-                    }
-                    
-                    gen.writeEndArray();
-                }
-            }
-        }
-
-        /**
-         * Сериализует дополнительные поля исключения через рефлексию.
-         * Включает только важные поля (не стандартные поля Throwable, не transient, не static).
-         */
-        private void serializeAdditionalFields(Throwable throwable, JsonGenerator gen) throws IOException {
-            Class<?> clazz = throwable.getClass();
-            
-            // Собираем поля только из классов-наследников Throwable (не из самого Throwable)
-            if (clazz == Throwable.class || clazz == Exception.class || clazz == RuntimeException.class || clazz == Error.class) {
-                return; // Нет кастомных полей
-            }
-
-            boolean hasAdditionalFields = false;
-            
-            // Проходим по всем полям класса и его суперклассов (до Throwable)
-            for (Class<?> currentClass = clazz; currentClass != null && currentClass != Throwable.class; currentClass = currentClass.getSuperclass()) {
+        private void serializeFields(Throwable throwable, JsonGenerator gen, int depth) throws IOException {
+            // Проходим по всей иерархии классов до Throwable
+            for (Class<?> currentClass = throwable.getClass(); 
+                 currentClass != null && Throwable.class.isAssignableFrom(currentClass); 
+                 currentClass = currentClass.getSuperclass()) {
+                
                 Field[] fields = currentClass.getDeclaredFields();
                 
                 for (Field field : fields) {
+                    String fieldName = field.getName();
+                    
                     // Пропускаем исключенные, static, transient поля
-                    if (EXCLUDED_FIELD_NAMES.contains(field.getName()) 
+                    if (EXCLUDED_FIELD_NAMES.contains(fieldName) 
                             || Modifier.isStatic(field.getModifiers())
                             || Modifier.isTransient(field.getModifiers())) {
                         continue;
@@ -271,25 +153,32 @@ public class ThrowableSerializerModule extends SimpleModule {
                             continue;
                         }
 
-                        // Первое дополнительное поле - открываем объект
-                        if (!hasAdditionalFields) {
-                            gen.writeObjectFieldStart("additionalFields");
-                            hasAdditionalFields = true;
+                        // Сериализуем поле
+                        gen.writeFieldName(fieldName);
+                        
+                        // Особая обработка для поля cause (с ограничением глубины)
+                        if ("cause".equals(fieldName) && value instanceof Throwable) {
+                            Throwable cause = (Throwable) value;
+                            if (cause != throwable && depth < maxCauseDepth) {
+                                // Рекурсивно сериализуем cause с Type ID
+                                gen.writeStartObject();
+                                serializeFields(cause, gen, depth + 1);
+                                gen.writeEndObject();
+                            } else if (depth >= maxCauseDepth) {
+                                // Достигнут лимит глубины - только строка
+                                gen.writeString(cause.getClass().getName() + ": " + cause.getMessage());
+                            } else {
+                                gen.writeNull();
+                            }
+                        } else {
+                            // Обычное поле - сериализуем с ограничениями
+                            serializeFieldValue(value, gen);
                         }
-
-                        // Сериализуем значение поля (с ограничением для сложных объектов)
-                        gen.writeFieldName(field.getName());
-                        serializeFieldValue(value, gen);
                         
                     } catch (Exception e) {
                         // Игнорируем ошибки доступа к полям
                     }
                 }
-            }
-
-            // Закрываем объект additionalFields, если были добавлены поля
-            if (hasAdditionalFields) {
-                gen.writeEndObject();
             }
         }
 
@@ -323,4 +212,3 @@ public class ThrowableSerializerModule extends SimpleModule {
         }
     }
 }
-
