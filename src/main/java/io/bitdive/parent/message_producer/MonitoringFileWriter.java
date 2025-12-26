@@ -39,6 +39,11 @@ public class MonitoringFileWriter {
     private static final int QUEUE_CAPACITY = 10000;
     private static final long MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024; // 100 MB
     
+    // Константы для оптимизации (избегаем создания объектов)
+    private static final byte[] NEWLINE_BYTES = "\n".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    private static final int FLUSH_THRESHOLD = 100; // Flush каждые 100 сообщений
+    private int messagesSinceFlush = 0;
+    
     public MonitoringFileWriter() throws IOException {
         this.baseFilePath = YamlParserConfig.getProfilingConfig().getMonitoring().getDataFile().getPath();
         this.toSendPath = baseFilePath + File.separator + "toSend";
@@ -129,19 +134,31 @@ public class MonitoringFileWriter {
     
     /**
      * Запись в текущий файл с проверкой размера
+     * ОПТИМИЗИРОВАНО: минимум создания объектов, редкий flush
      */
     private void writeToFile(String message) throws IOException {
         if (currentOutputStream == null) {
             rotateFile();
         }
         
-        // Добавляем перевод строки после каждого сообщения (как делал Log4j2)
-        String messageWithNewLine = message + "\n";
-        byte[] bytes = messageWithNewLine.getBytes();
-        currentOutputStream.write(bytes);
-        currentOutputStream.flush();
+        // Используем UTF-8 явно для производительности
+        byte[] messageBytes = message.getBytes(java.nio.charset.StandardCharsets.UTF_8);
         
-        long newSize = currentFileSize.addAndGet(bytes.length);
+        // Записываем сообщение
+        currentOutputStream.write(messageBytes);
+        // Добавляем перевод строки (переиспользуем константу)
+        currentOutputStream.write(NEWLINE_BYTES);
+        
+        // Обновляем размер
+        long totalBytes = messageBytes.length + NEWLINE_BYTES.length;
+        long newSize = currentFileSize.addAndGet(totalBytes);
+        
+        // ВАЖНО: Flush НЕ каждый раз, а периодически для производительности
+        messagesSinceFlush++;
+        if (messagesSinceFlush >= FLUSH_THRESHOLD) {
+            currentOutputStream.flush();
+            messagesSinceFlush = 0;
+        }
         
         // Проверяем размер файла
         if (newSize >= maxFileSizeBytes) {
@@ -154,7 +171,9 @@ public class MonitoringFileWriter {
      */
     private void rotateFileIfNeeded() {
         try {
-            if (currentFileSize.get() > 0) {
+            // Flush перед ротацией для сохранности данных
+            if (currentOutputStream != null && currentFileSize.get() > 0) {
+                currentOutputStream.flush();
                 rotateFile();
             }
         } catch (Exception e) {
@@ -168,9 +187,10 @@ public class MonitoringFileWriter {
      * Ротация: закрываем текущий файл, архивируем его и создаем новый
      */
     private synchronized void rotateFile() throws IOException {
-        // Закрываем текущий файл
+        // Финальный flush перед закрытием
         if (currentOutputStream != null) {
             try {
+                currentOutputStream.flush();
                 currentOutputStream.close();
             } catch (IOException e) {
                 if (LoggerStatusContent.isErrorsOrDebug()) {
@@ -194,6 +214,7 @@ public class MonitoringFileWriter {
             8192 // buffer size
         );
         currentFileSize.set(0);
+        messagesSinceFlush = 0; // Сбрасываем счётчик
     }
     
     /**
