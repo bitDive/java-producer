@@ -3,7 +3,6 @@ package io.bitdive.parent.message_producer;
 import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import io.bitdive.parent.trasirovka.agent.utils.MessageTypeEnum;
-import org.apache.logging.log4j.Logger;
 
 import java.net.URI;
 import java.net.URLDecoder;
@@ -17,7 +16,7 @@ import static io.bitdive.parent.trasirovka.agent.utils.ReflectionUtils.SENSITIVE
 
 
 public class MessageService {
-    private static final Logger logger = LibraryLoggerConfig.getLogger(MessageService.class);
+    private static final MonitoringLogger logger = LibraryLoggerConfig.getLogger(MessageService.class);
 
     private static final String SPLITTER = "~-~";
 

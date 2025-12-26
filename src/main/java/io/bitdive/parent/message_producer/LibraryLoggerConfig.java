@@ -1,125 +1,93 @@
 package io.bitdive.parent.message_producer;
 
-import io.bitdive.parent.parserConfig.ProfilingConfig;
-import io.bitdive.parent.parserConfig.YamlParserConfig;
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.core.LoggerContext;
-import org.apache.logging.log4j.core.config.Configuration;
-import org.apache.logging.log4j.core.config.builder.api.*;
-import org.apache.logging.log4j.core.config.builder.impl.BuiltConfiguration;
+import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 
-import java.io.File;
-import java.util.Optional;
+import java.io.IOException;
 
-
+/**
+ * Облегченная конфигурация логирования для библиотеки мониторинга.
+ * Полностью независима от Log4j2/Logback - не влияет на логи клиентского приложения.
+ * 
+ * Использует собственную легковесную систему:
+ * - MonitoringFileWriter для асинхронной записи в файлы
+ * - FileUploadService для отправки файлов на сервер
+ */
 public class LibraryLoggerConfig {
 
-    private static LoggerContext loggerContext;
+    private static MonitoringFileWriter fileWriter;
+    private static FileUploadService uploadService;
+    private static MonitoringLogger logger;
 
-
+    /**
+     * Инициализация системы мониторинга
+     */
     public static void init() {
-        if (loggerContext != null) {
+        if (fileWriter != null) {
             return;
         }
 
-        ConfigurationBuilder<BuiltConfiguration> builder = ConfigurationBuilderFactory.newConfigurationBuilder();
-
-        builder.setStatusLevel(Level.WARN);
-
-        AppenderComponentBuilder rollingFileAppender =
-                builder.newAppender("MonitoringCustomConfig", "RollingRandomAccessFile")
-                        .addAttribute("fileName", YamlParserConfig.getProfilingConfig().getMonitoring().getDataFile().getPath() + File.separator + "monitoringFile.data")
-                        .addAttribute("filePattern",
-                                YamlParserConfig.getProfilingConfig().getMonitoring()
-                                        .getDataFile().getPath()
-                                        + File.separator + "toSend" + File.separator
-                                        + "data-%d{yyyy-MM-dd-HH-mm-ss}-%i_"
-                                        + YamlParserConfig.getProfilingConfig().getApplication()
-                                        .getServiceName()
-                                        + ".data.gz");
-
-
-        LayoutComponentBuilder layoutBuilder = builder.newLayout("PatternLayout").addAttribute("pattern", "%m");
-        rollingFileAppender.add(layoutBuilder);
-
-        ComponentBuilder<?> policies = builder.newComponent("Policies")
-
-                .addComponent(builder.newComponent("CronTriggeringPolicy")
-                        .addAttribute("schedule",
-                                "*/" + YamlParserConfig.getProfilingConfig()
-                                        .getMonitoring()
-                                        .getDataFile()
-                                        .getTimerConvertForSend()
-                                        + " * * * * ?"))
-                .addComponent(builder.newComponent("SizeBasedTriggeringPolicy")
-                        .addAttribute("size", "100MB"));
-        rollingFileAppender.addComponent(policies);
-
-        builder.add(rollingFileAppender);
-
-        AppenderComponentBuilder asyncAppender = builder.newAppender("AsyncAppender", "Async")
-                .addAttribute("bufferSize", 8096)
-                .addComponent(builder.newAppenderRef("MonitoringCustomConfig"));
-        builder.add(asyncAppender);
-
-        AppenderComponentBuilder customHttpAppender = builder.newAppender("CustomHttpAppender", "CustomHttpAppender")
-                .addAttribute("url", YamlParserConfig.getProfilingConfig().getMonitoring().getSendFiles().getServerConsumer().getUrl())
-                .addAttribute("proxyHost", Optional.ofNullable(YamlParserConfig.getProfilingConfig().getMonitoring().getSendFiles().getServerConsumer())
-                        .map(ProfilingConfig.MonitoringConfig.MonitoringSendFilesConfig.ServerConsumerConfig::getProxy)
-                        .map(ProfilingConfig.MonitoringConfig.MonitoringSendFilesConfig.ServerConsumerConfig.ProxyConfig::getHost)
-                        .orElse(null))
-                .addAttribute("proxyPort", Optional.ofNullable(YamlParserConfig.getProfilingConfig().getMonitoring().getSendFiles().getServerConsumer())
-                        .map(ProfilingConfig.MonitoringConfig.MonitoringSendFilesConfig.ServerConsumerConfig::getProxy)
-                        .map(ProfilingConfig.MonitoringConfig.MonitoringSendFilesConfig.ServerConsumerConfig.ProxyConfig::getPort)
-                        .map(Object::toString)
-                        .orElse(null))
-                .addAttribute("proxyUserName", Optional.ofNullable(YamlParserConfig.getProfilingConfig().getMonitoring().getSendFiles().getServerConsumer())
-                        .map(ProfilingConfig.MonitoringConfig.MonitoringSendFilesConfig.ServerConsumerConfig::getProxy)
-                        .map(ProfilingConfig.MonitoringConfig.MonitoringSendFilesConfig.ServerConsumerConfig.ProxyConfig::getUsername)
-                        .orElse(null))
-                .addAttribute("proxyPassword", Optional.ofNullable(YamlParserConfig.getProfilingConfig().getMonitoring().getSendFiles().getServerConsumer())
-                        .map(ProfilingConfig.MonitoringConfig.MonitoringSendFilesConfig.ServerConsumerConfig::getProxy)
-                        .map(ProfilingConfig.MonitoringConfig.MonitoringSendFilesConfig.ServerConsumerConfig.ProxyConfig::getPassword)
-                        .orElse(null))
-                .addAttribute("filePath", YamlParserConfig.getProfilingConfig().getMonitoring().getDataFile().getPath() + File.separator + "toSend")
-                .addAttribute("fileStorageTime", YamlParserConfig.getProfilingConfig().getMonitoring().getDataFile().getFileStorageTime());
-
-        builder.add(customHttpAppender);
-
-        RootLoggerComponentBuilder rootLogger = builder.newRootLogger(Level.INFO)
-                .add(builder.newAppenderRef("AsyncAppender"))
-                .add(builder.newAppenderRef("CustomHttpAppender"))
-                .addAttribute("includeLocation", "false");
-
-        builder.add(rootLogger);
-
-
-        Configuration configuration = builder.build();
-
-        LoggerContext context = new LoggerContext("IsolatedContext");
-        context.start(configuration);
-
-        loggerContext = context;
-    }
-
-
-    public static Logger getLogger(Class<?> clazz) {
-        return loggerContext.getLogger(clazz.getName());
+        try {
+            // Инициализируем файловый writer
+            fileWriter = new MonitoringFileWriter();
+            
+            // Инициализируем сервис загрузки файлов
+            uploadService = new FileUploadService();
+            
+            // Создаем logger wrapper
+            logger = new MonitoringLogger(fileWriter);
+            
+            if (LoggerStatusContent.isDebug()) {
+                System.out.println("LibraryLoggerConfig initialized successfully");
+            }
+            
+        } catch (IOException e) {
+            if (LoggerStatusContent.isErrorsOrDebug()) {
+                System.err.println("Failed to initialize LibraryLoggerConfig: " + e.getMessage());
+            }
+            throw new RuntimeException("Failed to initialize monitoring logger", e);
+        }
     }
 
     /**
-     * Правильная остановка логгер контекста с остановкой всех аппендеров
+     * Получить logger для класса
+     */
+    public static MonitoringLogger getLogger(Class<?> clazz) {
+        if (logger == null) {
+            throw new IllegalStateException("LibraryLoggerConfig not initialized. Call init() first.");
+        }
+        return logger;
+    }
+
+    /**
+     * Правильная остановка системы мониторинга
      */
     public static void stopLoggerContext() {
-        if (loggerContext != null) {
-            // Явно останавливаем все аппендеры перед остановкой контекста
-            loggerContext.getConfiguration().getAppenders().values().forEach(appender -> {
-                if (appender instanceof CustomHttpAppender) {
-                    appender.stop();
+        if (fileWriter != null) {
+            try {
+                fileWriter.shutdown();
+            } catch (Exception e) {
+                if (LoggerStatusContent.isErrorsOrDebug()) {
+                    System.err.println("Error stopping file writer: " + e.getMessage());
                 }
-            });
-            loggerContext.stop();
+            }
         }
+        
+        if (uploadService != null) {
+            try {
+                uploadService.shutdown();
+            } catch (Exception e) {
+                if (LoggerStatusContent.isErrorsOrDebug()) {
+                    System.err.println("Error stopping upload service: " + e.getMessage());
+                }
+            }
+        }
+        
+        if (LoggerStatusContent.isDebug()) {
+            System.out.println("LibraryLoggerConfig stopped");
+        }
+        
+        fileWriter = null;
+        uploadService = null;
+        logger = null;
     }
 }

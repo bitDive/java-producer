@@ -1,10 +1,12 @@
 package io.bitdive;
 
 import io.bitdive.aspect.*;
+import io.bitdive.utilsBean.DumpAllSpringPropertiesRunner;
 import org.springframework.beans.factory.annotation.Configurable;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Conditional;
+import org.springframework.core.env.ConfigurableEnvironment;
 
 @Configurable
 public class SpringConfigProfiling {
@@ -49,6 +51,11 @@ public class SpringConfigProfiling {
     @Conditional(YamlParserCondition.class)
     public StompSendToAspect stompSendToAspect() {
         return new StompSendToAspect();
+    }
+
+    @Bean
+    public DumpAllSpringPropertiesRunner dumpAllSpringPropertiesRunner(ConfigurableEnvironment env){
+        return new DumpAllSpringPropertiesRunner(env);
     }
 
 }

@@ -28,7 +28,7 @@ public class ReflectionUtils {
     private static final int MAX_COLLECTION_SIZE = YamlParserConfig
             .getProfilingConfig().getMonitoring().getSerialization().getMaxElementCollection();
 
-    private static final String[] EXCLUDED_PACKAGES = YamlParserConfig
+    private static final String[] EXCLUDED_PACKAGES =YamlParserConfig
             .getProfilingConfig().getMonitoring().getSerialization().getExcludedPackages();
     private static final String INDICATOR = "...";
 
