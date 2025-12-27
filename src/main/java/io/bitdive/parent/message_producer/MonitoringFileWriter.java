@@ -42,7 +42,7 @@ public class MonitoringFileWriter {
     
     // Константы для оптимизации (избегаем создания объектов)
     private static final byte[] NEWLINE_BYTES = "\n".getBytes(java.nio.charset.StandardCharsets.UTF_8);
-    private static final int FLUSH_THRESHOLD = 200; // Flush каждые 200 сообщений (увеличено для снижения CPU)
+    private static final int FLUSH_THRESHOLD = 10; // Flush каждые 10 сообщений (гарантия записи на диск)
     private static final int BATCH_SIZE = 50; // Обрабатываем до 50 сообщений за раз
     private static final int BUFFER_SIZE = 16384; // Увеличенный буфер (16KB вместо 8KB)
     private static final long POLL_TIMEOUT_MS = 100; // Базовый timeout
@@ -160,6 +160,18 @@ public class MonitoringFileWriter {
                             }
                         }
                     }
+                    
+                    // ВАЖНО: Принудительный flush после обработки batch для гарантии записи
+                    // Это особенно важно при малом количестве сообщений
+                    try {
+                        if (currentOutputStream != null) {
+                            currentOutputStream.flush();
+                        }
+                    } catch (IOException e) {
+                        if (LoggerStatusContent.isErrorsOrDebug()) {
+                            System.err.println("Error flushing after batch: " + e.getMessage());
+                        }
+                    }
                 } else {
                     queueWasEmpty = true;
                 }
@@ -177,14 +189,30 @@ public class MonitoringFileWriter {
     /**
      * Запись в текущий файл с проверкой размера
      * ОПТИМИЗИРОВАНО: минимум создания объектов, редкий flush
+     * ИСПРАВЛЕНО: фильтрация null байтов для предотвращения ошибок парсинга JSON
+     * ИСПРАВЛЕНО: принудительный flush для пустых сообщений и периодический flush
      */
     private void writeToFile(String message) throws IOException {
         if (currentOutputStream == null) {
             rotateFile();
         }
         
+        // Валидация и очистка сообщения от null байтов и недопустимых символов
+        if (message == null) {
+            message = "";
+        }
+        
         // Используем UTF-8 явно для производительности
         byte[] messageBytes = message.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        
+        // Фильтруем null байты (\x00) которые могут вызвать ошибки при парсинге JSON
+        // Это важно для предотвращения ошибки "invalid character '\x00'"
+        messageBytes = filterNullBytes(messageBytes);
+        
+        // Пропускаем запись если сообщение полностью пустое после фильтрации
+        if (messageBytes.length == 0 && message.isEmpty()) {
+            return;
+        }
         
         // Записываем сообщение
         currentOutputStream.write(messageBytes);
@@ -195,7 +223,8 @@ public class MonitoringFileWriter {
         long totalBytes = messageBytes.length + NEWLINE_BYTES.length;
         long newSize = currentFileSize.addAndGet(totalBytes);
         
-        // ВАЖНО: Flush НЕ каждый раз, а периодически для производительности
+        // ВАЖНО: Flush периодически для производительности и гарантии записи
+        // Flush каждые FLUSH_THRESHOLD сообщений для гарантии записи на диск
         messagesSinceFlush++;
         if (messagesSinceFlush >= FLUSH_THRESHOLD) {
             currentOutputStream.flush();
@@ -206,6 +235,40 @@ public class MonitoringFileWriter {
         if (newSize >= maxFileSizeBytes) {
             rotateFile();
         }
+    }
+    
+    /**
+     * Фильтрация null байтов из массива байтов
+     * Предотвращает ошибки парсинга JSON на стороне сервера
+     */
+    private byte[] filterNullBytes(byte[] bytes) {
+        if (bytes == null || bytes.length == 0) {
+            return bytes;
+        }
+        
+        // Подсчитываем количество null байтов
+        int nullCount = 0;
+        for (byte b : bytes) {
+            if (b == 0) {
+                nullCount++;
+            }
+        }
+        
+        // Если null байтов нет - возвращаем исходный массив
+        if (nullCount == 0) {
+            return bytes;
+        }
+        
+        // Создаем новый массив без null байтов
+        byte[] filtered = new byte[bytes.length - nullCount];
+        int index = 0;
+        for (byte b : bytes) {
+            if (b != 0) {
+                filtered[index++] = b;
+            }
+        }
+        
+        return filtered;
     }
     
     /**
@@ -226,7 +289,8 @@ public class MonitoringFileWriter {
     }
     
     /**
-     * Ротация: закрываем текущий файл, архивируем его и создаем новый
+     * Ротация: закрываем текущий файл, переименовываем его и создаем новый
+     * ОПТИМИЗИРОВАНО: переименование вместо синхронного архивирования для снижения блокировок
      */
     private synchronized void rotateFile() throws IOException {
         // Сохраняем ссылки для архивирования
@@ -254,25 +318,56 @@ public class MonitoringFileWriter {
             }
         }
         
-        // Архивируем предыдущий файл асинхронно (не блокируем основной поток записи)
+        // Переименовываем файл для последующего асинхронного архивирования
+        // Это позволяет быстро создать новый файл без блокировки на архивирование
+        Path renamedFile = null;
         if (oldFile != null && oldFileSize > 0) {
-            final Path fileToArchive = oldFile;
-            // Асинхронное архивирование в отдельном executor
-            archiveExecutor.submit(() -> {
-                try {
-                    // Проверяем существование только один раз
-                    if (Files.exists(fileToArchive)) {
-                        archiveFile(fileToArchive);
-                    }
-                } catch (Exception e) {
-                    if (LoggerStatusContent.isErrorsOrDebug()) {
-                        System.err.println("Error in async archiving: " + e.getMessage());
+            try {
+                if (Files.exists(oldFile)) {
+                    long actualFileSize = Files.size(oldFile);
+                    if (actualFileSize > 0) {
+                        // Создаем уникальное имя для переименованного файла
+                        String timestamp = LocalDateTime.now().format(TIMESTAMP_FORMATTER);
+                        String renamedFileName = String.format("monitoringFile-%s.data", timestamp);
+                        renamedFile = Paths.get(baseFilePath, renamedFileName);
+                        
+                        // Переименовываем файл (быстрая атомарная операция)
+                        Files.move(oldFile, renamedFile);
+                        
+                        // Асинхронно архивируем переименованный файл (не блокирует создание нового)
+                        final Path fileToArchive = renamedFile;
+                        archiveExecutor.submit(() -> {
+                            try {
+                                if (LoggerStatusContent.isDebug()) {
+                                    System.out.println("Starting async archiving of: " + fileToArchive.getFileName());
+                                }
+                                archiveFile(fileToArchive);
+                                // Удаляем переименованный файл после успешного архивирования
+                                Files.deleteIfExists(fileToArchive);
+                                if (LoggerStatusContent.isDebug()) {
+                                    System.out.println("Completed archiving and deleted temp file: " + fileToArchive.getFileName());
+                                }
+                            } catch (Exception e) {
+                                if (LoggerStatusContent.isErrorsOrDebug()) {
+                                    System.err.println("Error in async archiving: " + e.getMessage());
+                                    e.printStackTrace();
+                                }
+                            }
+                        });
+                    } else if (LoggerStatusContent.isDebug()) {
+                        System.out.println("Skipping rotation of empty file: " + oldFile);
+                        // Удаляем пустой файл
+                        Files.deleteIfExists(oldFile);
                     }
                 }
-            });
+            } catch (Exception e) {
+                if (LoggerStatusContent.isErrorsOrDebug()) {
+                    System.err.println("Error renaming file during rotation: " + e.getMessage());
+                }
+            }
         }
         
-        // Создаем новый файл
+        // Создаем новый файл сразу (не ждем архивирования)
         try {
             currentFile = Paths.get(baseFilePath, "monitoringFile.data");
             currentOutputStream = new BufferedOutputStream(
@@ -295,9 +390,27 @@ public class MonitoringFileWriter {
     /**
      * Архивирование файла в gzip
      * ОПТИМИЗИРОВАНО: использует потокобезопасный DateTimeFormatter вместо SimpleDateFormat
+     * ИСПРАВЛЕНО: гарантирует запись только реально прочитанных байтов (без null байтов из буфера)
+     * ИСПРАВЛЕНО: проверка размера файла и валидация перед архивированием
      */
     private void archiveFile(Path sourceFile) {
         try {
+            // Проверяем, что файл существует и не пустой
+            if (!Files.exists(sourceFile)) {
+                if (LoggerStatusContent.isDebug()) {
+                    System.out.println("File does not exist for archiving: " + sourceFile);
+                }
+                return;
+            }
+            
+            long fileSize = Files.size(sourceFile);
+            if (fileSize == 0) {
+                if (LoggerStatusContent.isDebug()) {
+                    System.out.println("Skipping archiving of empty file: " + sourceFile);
+                }
+                return;
+            }
+            
             // Используем потокобезопасный форматтер (переиспользуем константу)
             // Добавлены миллисекунды для избежания конфликтов имен при быстрой ротации
             String timestamp = LocalDateTime.now().format(TIMESTAMP_FORMATTER);
@@ -313,20 +426,46 @@ public class MonitoringFileWriter {
                 // Переиспользуем буфер для минимизации аллокаций (увеличенный размер)
                 byte[] buffer = new byte[BUFFER_SIZE];
                 int len;
-                while ((len = in.read(buffer)) > 0) {
-                    gzipOut.write(buffer, 0, len);
+                // ВАЖНО: читаем и записываем только реально прочитанные байты (len)
+                // Это гарантирует, что мы не записываем нулевые байты из неиспользованной части буфера
+                while ((len = in.read(buffer)) != -1) {
+                    if (len > 0) {
+                        // Записываем только прочитанные байты, не весь буфер
+                        gzipOut.write(buffer, 0, len);
+                    }
                 }
                 // Явный flush для гарантии записи всех данных
                 gzipOut.finish();
+                // Финальный flush буфера для гарантии записи на диск
+                bufferedOut.flush();
             }
             
-            if (LoggerStatusContent.isDebug()) {
-                System.out.println("Archived monitoring file: " + archiveName);
+            // Проверяем, что архив был создан и не пустой
+            // ВАЖНО: Потоки уже закрыты в try-with-resources, данные должны быть на диске
+            if (Files.exists(archivePath)) {
+                long archiveSize = Files.size(archivePath);
+                if (archiveSize > 0) {
+                    if (LoggerStatusContent.isDebug()) {
+                        System.out.println("Archived monitoring file: " + archiveName + 
+                            " (source: " + fileSize + " bytes, archive: " + archiveSize + " bytes, path: " + archivePath + ")");
+                    }
+                } else {
+                    if (LoggerStatusContent.isErrorsOrDebug()) {
+                        System.err.println("Warning: Created empty archive file: " + archiveName);
+                    }
+                    // Удаляем пустой архив
+                    Files.deleteIfExists(archivePath);
+                }
+            } else {
+                if (LoggerStatusContent.isErrorsOrDebug()) {
+                    System.err.println("Error: Archive file was not created: " + archiveName + " in directory: " + toSendPath);
+                }
             }
             
         } catch (IOException e) {
             if (LoggerStatusContent.isErrorsOrDebug()) {
-                System.err.println("Error archiving file: " + e.getMessage());
+                System.err.println("Error archiving file " + sourceFile + ": " + e.getMessage());
+                e.printStackTrace();
             }
         }
     }

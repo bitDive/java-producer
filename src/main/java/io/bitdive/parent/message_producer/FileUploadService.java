@@ -132,8 +132,15 @@ public class FileUploadService {
             // Находим все .gz файлы
             try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir, "*.gz")) {
                 for (Path entry : stream) {
-                    filesToSend.add(entry);
+                    // Проверяем, что файл существует и не пустой
+                    if (Files.exists(entry) && Files.size(entry) > 0) {
+                        filesToSend.add(entry);
+                    }
                 }
+            }
+            
+            if (LoggerStatusContent.isDebug() && !filesToSend.isEmpty()) {
+                System.out.println("FileUploadService: Found " + filesToSend.size() + " files to upload");
             }
             
             // Отправляем каждый файл в отдельной задаче
