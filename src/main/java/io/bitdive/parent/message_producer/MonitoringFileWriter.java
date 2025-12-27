@@ -8,8 +8,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
-import java.text.SimpleDateFormat;
-import java.util.Date;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -35,14 +35,24 @@ public class MonitoringFileWriter {
     private final BlockingQueue<String> writeQueue;
     private final ExecutorService writerExecutor;
     private final ScheduledExecutorService rotationScheduler;
+    private final ExecutorService archiveExecutor; // Отдельный executor для архивирования
     
     private static final int QUEUE_CAPACITY = 10000;
     private static final long MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024; // 100 MB
     
     // Константы для оптимизации (избегаем создания объектов)
     private static final byte[] NEWLINE_BYTES = "\n".getBytes(java.nio.charset.StandardCharsets.UTF_8);
-    private static final int FLUSH_THRESHOLD = 100; // Flush каждые 100 сообщений
+    private static final int FLUSH_THRESHOLD = 200; // Flush каждые 200 сообщений (увеличено для снижения CPU)
+    private static final int BATCH_SIZE = 50; // Обрабатываем до 50 сообщений за раз
+    private static final int BUFFER_SIZE = 16384; // Увеличенный буфер (16KB вместо 8KB)
+    private static final long POLL_TIMEOUT_MS = 100; // Базовый timeout
+    private static final long IDLE_POLL_TIMEOUT_MS = 500; // Увеличенный timeout когда очередь пустая
+    
+    // Потокобезопасный форматтер для даты (вместо SimpleDateFormat)
+    private static final DateTimeFormatter TIMESTAMP_FORMATTER = 
+        DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss-SSS");
     private int messagesSinceFlush = 0;
+    private volatile boolean queueWasEmpty = true; // Флаг для адаптивного timeout
     
     public MonitoringFileWriter() throws IOException {
         this.baseFilePath = YamlParserConfig.getProfilingConfig().getMonitoring().getDataFile().getPath();
@@ -67,6 +77,12 @@ public class MonitoringFileWriter {
         });
         this.rotationScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "MonitoringRotation");
+            t.setDaemon(true);
+            return t;
+        });
+        // Отдельный executor для архивирования (не блокирует основной поток записи)
+        this.archiveExecutor = Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "MonitoringArchive");
             t.setDaemon(true);
             return t;
         });
@@ -113,20 +129,46 @@ public class MonitoringFileWriter {
     
     /**
      * Основной цикл записи из очереди в файл
+     * ОПТИМИЗИРОВАНО: batch обработка сообщений и адаптивный timeout для снижения нагрузки на CPU
      */
     private void writerLoop() {
+        java.util.List<String> batch = new java.util.ArrayList<>(BATCH_SIZE);
+        
         while (isRunning.get() || !writeQueue.isEmpty()) {
             try {
-                String message = writeQueue.poll(100, TimeUnit.MILLISECONDS);
-                if (message != null) {
-                    writeToFile(message);
+                // Адаптивный timeout: больше когда очередь пустая (меньше опросов CPU)
+                long timeout = queueWasEmpty ? IDLE_POLL_TIMEOUT_MS : POLL_TIMEOUT_MS;
+                
+                // Собираем batch сообщений для обработки
+                batch.clear();
+                String firstMessage = writeQueue.poll(timeout, TimeUnit.MILLISECONDS);
+                
+                if (firstMessage != null) {
+                    batch.add(firstMessage);
+                    queueWasEmpty = false;
+                    
+                    // Собираем дополнительные сообщения без блокировки (drain)
+                    writeQueue.drainTo(batch, BATCH_SIZE - 1);
+                    
+                    // Записываем все сообщения из batch
+                    for (String message : batch) {
+                        try {
+                            writeToFile(message);
+                        } catch (Exception e) {
+                            if (LoggerStatusContent.isErrorsOrDebug()) {
+                                System.err.println("Error writing message to file: " + e.getMessage());
+                            }
+                        }
+                    }
+                } else {
+                    queueWasEmpty = true;
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
             } catch (Exception e) {
                 if (LoggerStatusContent.isErrorsOrDebug()) {
-                    System.err.println("Error writing to monitoring file: " + e.getMessage());
+                    System.err.println("Error in writer loop: " + e.getMessage());
                 }
             }
         }
@@ -187,56 +229,95 @@ public class MonitoringFileWriter {
      * Ротация: закрываем текущий файл, архивируем его и создаем новый
      */
     private synchronized void rotateFile() throws IOException {
-        // Финальный flush перед закрытием
-        if (currentOutputStream != null) {
+        // Сохраняем ссылки для архивирования
+        OutputStream oldStream = currentOutputStream;
+        Path oldFile = currentFile;
+        // Сохраняем размер файла ДО сброса счетчика
+        long oldFileSize = currentFileSize.get();
+        
+        // Закрываем старый поток с гарантированным закрытием
+        if (oldStream != null) {
             try {
-                currentOutputStream.flush();
-                currentOutputStream.close();
+                oldStream.flush();
             } catch (IOException e) {
                 if (LoggerStatusContent.isErrorsOrDebug()) {
-                    System.err.println("Error closing current file: " + e.getMessage());
+                    System.err.println("Error flushing current file: " + e.getMessage());
+                }
+            } finally {
+                try {
+                    oldStream.close();
+                } catch (IOException e) {
+                    if (LoggerStatusContent.isErrorsOrDebug()) {
+                        System.err.println("Error closing current file: " + e.getMessage());
+                    }
                 }
             }
         }
         
-        // Архивируем предыдущий файл в toSend директорию
-        if (currentFile != null && Files.exists(currentFile) && Files.size(currentFile) > 0) {
-            archiveFile(currentFile);
+        // Архивируем предыдущий файл асинхронно (не блокируем основной поток записи)
+        if (oldFile != null && oldFileSize > 0) {
+            final Path fileToArchive = oldFile;
+            // Асинхронное архивирование в отдельном executor
+            archiveExecutor.submit(() -> {
+                try {
+                    // Проверяем существование только один раз
+                    if (Files.exists(fileToArchive)) {
+                        archiveFile(fileToArchive);
+                    }
+                } catch (Exception e) {
+                    if (LoggerStatusContent.isErrorsOrDebug()) {
+                        System.err.println("Error in async archiving: " + e.getMessage());
+                    }
+                }
+            });
         }
         
         // Создаем новый файл
-        currentFile = Paths.get(baseFilePath, "monitoringFile.data");
-        currentOutputStream = new BufferedOutputStream(
-            Files.newOutputStream(currentFile, 
-                StandardOpenOption.CREATE, 
-                StandardOpenOption.TRUNCATE_EXISTING,
-                StandardOpenOption.WRITE),
-            8192 // buffer size
-        );
-        currentFileSize.set(0);
-        messagesSinceFlush = 0; // Сбрасываем счётчик
+        try {
+            currentFile = Paths.get(baseFilePath, "monitoringFile.data");
+            currentOutputStream = new BufferedOutputStream(
+                Files.newOutputStream(currentFile, 
+                    StandardOpenOption.CREATE, 
+                    StandardOpenOption.TRUNCATE_EXISTING,
+                    StandardOpenOption.WRITE),
+                BUFFER_SIZE // Увеличенный буфер для снижения системных вызовов
+            );
+            currentFileSize.set(0);
+            messagesSinceFlush = 0; // Сбрасываем счётчик
+        } catch (IOException e) {
+            // Если не удалось создать новый файл, сбрасываем ссылку
+            currentOutputStream = null;
+            currentFile = null;
+            throw e;
+        }
     }
     
     /**
      * Архивирование файла в gzip
+     * ОПТИМИЗИРОВАНО: использует потокобезопасный DateTimeFormatter вместо SimpleDateFormat
      */
     private void archiveFile(Path sourceFile) {
         try {
+            // Используем потокобезопасный форматтер (переиспользуем константу)
             // Добавлены миллисекунды для избежания конфликтов имен при быстрой ротации
-            String timestamp = new SimpleDateFormat("yyyy-MM-dd-HH-mm-ss-SSS").format(new Date());
+            String timestamp = LocalDateTime.now().format(TIMESTAMP_FORMATTER);
             String archiveName = String.format("data-%s-%s.data.gz", timestamp, serviceName);
             Path archivePath = Paths.get(toSendPath, archiveName);
             
-            // Сжимаем файл в gzip
+            // Сжимаем файл в gzip с использованием try-with-resources для гарантированного закрытия
             try (InputStream in = Files.newInputStream(sourceFile);
-                 GZIPOutputStream gzipOut = new GZIPOutputStream(
-                     new BufferedOutputStream(Files.newOutputStream(archivePath), 8192))) {
+                 BufferedOutputStream bufferedOut = new BufferedOutputStream(
+                     Files.newOutputStream(archivePath), BUFFER_SIZE);
+                 GZIPOutputStream gzipOut = new GZIPOutputStream(bufferedOut)) {
                 
-                byte[] buffer = new byte[8192];
+                // Переиспользуем буфер для минимизации аллокаций (увеличенный размер)
+                byte[] buffer = new byte[BUFFER_SIZE];
                 int len;
                 while ((len = in.read(buffer)) > 0) {
                     gzipOut.write(buffer, 0, len);
                 }
+                // Явный flush для гарантии записи всех данных
+                gzipOut.finish();
             }
             
             if (LoggerStatusContent.isDebug()) {
@@ -281,17 +362,49 @@ public class MonitoringFileWriter {
             Thread.currentThread().interrupt();
         }
         
-        // Закрываем текущий файл
+        // Останавливаем executor архивирования
+        archiveExecutor.shutdown();
+        try {
+            if (!archiveExecutor.awaitTermination(10, TimeUnit.SECONDS)) {
+                archiveExecutor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            archiveExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+        
+        // Закрываем текущий файл с гарантированным закрытием
         if (currentOutputStream != null) {
+            OutputStream streamToClose = currentOutputStream;
+            Path fileToArchive = currentFile;
+            
             try {
-                currentOutputStream.close();
-                // Архивируем последний файл если он не пустой
-                if (currentFile != null && Files.exists(currentFile) && Files.size(currentFile) > 0) {
-                    archiveFile(currentFile);
-                }
+                streamToClose.flush();
             } catch (IOException e) {
                 if (LoggerStatusContent.isErrorsOrDebug()) {
-                    System.err.println("Error closing file on shutdown: " + e.getMessage());
+                    System.err.println("Error flushing file on shutdown: " + e.getMessage());
+                }
+            } finally {
+                try {
+                    streamToClose.close();
+                } catch (IOException e) {
+                    if (LoggerStatusContent.isErrorsOrDebug()) {
+                        System.err.println("Error closing file on shutdown: " + e.getMessage());
+                    }
+                }
+            }
+            
+            // Архивируем последний файл если он не пустой (после закрытия потока)
+            // Используем синхронное архивирование при shutdown для гарантии завершения
+            if (fileToArchive != null) {
+                try {
+                    if (Files.exists(fileToArchive) && Files.size(fileToArchive) > 0) {
+                        archiveFile(fileToArchive);
+                    }
+                } catch (IOException e) {
+                    if (LoggerStatusContent.isErrorsOrDebug()) {
+                        System.err.println("Error archiving file on shutdown: " + e.getMessage());
+                    }
                 }
             }
         }
