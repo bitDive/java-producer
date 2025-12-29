@@ -1,6 +1,7 @@
 package io.bitdive.parent.parserConfig;
 
 import com.github.f4b6a3.uuid.UuidCreator;
+import io.bitdive.parent.dto.ApplicationEnvironment;
 import lombok.Getter;
 import lombok.Setter;
 import org.apache.commons.lang3.ObjectUtils;
@@ -25,6 +26,10 @@ public class YamlParserConfig {
 
     @Getter
     private static ProfilingConfig profilingConfig;
+
+    @Getter
+    @Setter
+    private static ApplicationEnvironment applicationEnvironment=null;
 
 
     public static void loadConfig(ConfigForServiceDTO dto) {

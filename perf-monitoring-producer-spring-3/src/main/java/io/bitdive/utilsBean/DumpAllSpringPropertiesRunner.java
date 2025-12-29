@@ -1,8 +1,12 @@
 package io.bitdive.utilsBean;
 
+import io.bitdive.parent.dto.ApplicationEnvironment;
+import io.bitdive.parent.parserConfig.YamlParserConfig;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
-import org.springframework.core.env.*;
+import org.springframework.core.env.ConfigurableEnvironment;
+import org.springframework.core.env.EnumerablePropertySource;
+import org.springframework.core.env.PropertySource;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
@@ -21,23 +25,39 @@ public class DumpAllSpringPropertiesRunner implements ApplicationRunner {
             Pattern.compile(".*(password|passwd|secret|token|apikey|api_key|private|key|jwt).*",
                     Pattern.CASE_INSENSITIVE);
 
+    private static final List<String> ignoreEnv=Arrays.asList("Path","java.class.path","java.library.path");
+
     @Override
     public void run(ApplicationArguments args) {
         Set<String> names = new TreeSet<>();
-
+        Map<String, String> mapEnvironment = new TreeMap<>();
         for (PropertySource<?> ps : env.getPropertySources()) {
-            if (ps instanceof EnumerablePropertySource<?> eps) {
-                names.addAll(Arrays.asList(eps.getPropertyNames()));
+            if (!(ps instanceof EnumerablePropertySource)) {
+                continue;
+            }
+            EnumerablePropertySource<?> eps = (EnumerablePropertySource<?>) ps;
+            names.addAll(Arrays.asList(eps.getPropertyNames()));
+        }
+
+
+
+        for (String name : names) {
+            if (!ignoreEnv.contains(name)) {
+                mapEnvironment.put(name, maskIfSensitive(name, env.getProperty(name)));
             }
         }
 
-        System.out.println("=== Active profiles: " + Arrays.toString(env.getActiveProfiles()) + " ===");
-        System.out.println("=== Spring properties dump (" + names.size() + " keys) ===");
+        YamlParserConfig.setApplicationEnvironment(ApplicationEnvironment.builder()
+                .moduleName(YamlParserConfig.getProfilingConfig().getApplication().getModuleName())
+                .serviceName(YamlParserConfig.getProfilingConfig().getApplication().getServiceName())
+                .activeProfiles(Arrays.asList(env.getActiveProfiles()))
+                .serviceNodeUUID(YamlParserConfig.getUUIDService())
+                .environmentApplication(mapEnvironment)
+                .build()
+        );
 
-        for (String name : names) {
-            String value = env.getProperty(name);
-            System.out.printf("%s = %s%n", name, maskIfSensitive(name, value));
-        }
+
+        names.clear();
     }
 
     private String maskIfSensitive(String key, String value) {

@@ -1,5 +1,6 @@
 package io.bitdive.jvm_metrics;
 
+import io.bitdive.parent.dto.ApplicationEnvironment;
 import io.micrometer.core.instrument.Measurement;
 import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -20,6 +21,7 @@ public class MetricsCollector {
     private OffsetDateTime createdMetric;
     private String serviceNodeUUID;
     private List<MetricDto> listOfMetrics;
+    private ApplicationEnvironment applicationEnvironment;
 
     public MetricsCollector(MeterRegistry meterRegistry) {
         listOfMetrics = collectMetrics(meterRegistry);

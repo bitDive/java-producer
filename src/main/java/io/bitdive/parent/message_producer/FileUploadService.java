@@ -37,7 +37,7 @@ public class FileUploadService {
     
     private static final int CONCURRENT_UPLOADS = 5;
     private static final int QUEUE_CAPACITY = 10;
-    private static final long SCAN_INTERVAL_SECONDS = 10;
+    private static final long SCAN_INTERVAL_SECONDS = 15;
     
     public FileUploadService() {
         ProfilingConfig config = YamlParserConfig.getProfilingConfig();
