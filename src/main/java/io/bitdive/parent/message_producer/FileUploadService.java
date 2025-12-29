@@ -144,8 +144,24 @@ public class FileUploadService {
             }
             
             // Отправляем каждый файл в отдельной задаче
+            // ИСПРАВЛЕНО: обработка RejectedExecutionException для предотвращения потери задач
             for (Path file : filesToSend) {
-                uploadPool.submit(createUploadTask(file));
+                try {
+                    uploadPool.submit(createUploadTask(file));
+                } catch (RejectedExecutionException e) {
+                    // Если пул переполнен, выполняем задачу синхронно в текущем потоке
+                    // чтобы избежать потери файлов для отправки
+                    if (LoggerStatusContent.isDebug()) {
+                        System.err.println("Upload pool rejected task, executing synchronously: " + file.getFileName());
+                    }
+                    try {
+                        createUploadTask(file).run();
+                    } catch (Exception taskEx) {
+                        if (LoggerStatusContent.isDebug()) {
+                            System.err.println("Error executing upload task synchronously: " + taskEx.getMessage());
+                        }
+                    }
+                }
             }
             
         } catch (Exception e) {

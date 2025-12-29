@@ -130,9 +130,11 @@ public class MonitoringFileWriter {
     /**
      * Основной цикл записи из очереди в файл
      * ОПТИМИЗИРОВАНО: batch обработка сообщений и адаптивный timeout для снижения нагрузки на CPU
+     * ИСПРАВЛЕНО: переиспользование batch списка для предотвращения лишних аллокаций
      */
     private void writerLoop() {
-        java.util.List<String> batch = new java.util.ArrayList<>(BATCH_SIZE);
+        // ИСПРАВЛЕНО: создаем список один раз и переиспользуем для снижения аллокаций
+        final java.util.List<String> batch = new java.util.ArrayList<>(BATCH_SIZE);
         
         while (isRunning.get() || !writeQueue.isEmpty()) {
             try {
@@ -336,24 +338,60 @@ public class MonitoringFileWriter {
                         
                         // Асинхронно архивируем переименованный файл (не блокирует создание нового)
                         final Path fileToArchive = renamedFile;
-                        archiveExecutor.submit(() -> {
+                        try {
+                            archiveExecutor.submit(() -> {
+                                try {
+                                    if (LoggerStatusContent.isDebug()) {
+                                        System.out.println("Starting async archiving of: " + fileToArchive.getFileName());
+                                    }
+                                    archiveFile(fileToArchive);
+                                    // Удаляем переименованный файл после успешного архивирования
+                                    Files.deleteIfExists(fileToArchive);
+                                    if (LoggerStatusContent.isDebug()) {
+                                        System.out.println("Completed archiving and deleted temp file: " + fileToArchive.getFileName());
+                                    }
+                                } catch (Exception e) {
+                                    if (LoggerStatusContent.isErrorsOrDebug()) {
+                                        System.err.println("Error in async archiving: " + e.getMessage());
+                                        e.printStackTrace();
+                                    }
+                                    // ИСПРАВЛЕНО: предотвращение утечки памяти - удаляем файл даже при ошибке архивирования
+                                    // чтобы избежать накопления переименованных файлов
+                                    try {
+                                        Files.deleteIfExists(fileToArchive);
+                                        if (LoggerStatusContent.isDebug()) {
+                                            System.out.println("Deleted temp file after archiving error: " + fileToArchive.getFileName());
+                                        }
+                                    } catch (IOException deleteEx) {
+                                        if (LoggerStatusContent.isErrorsOrDebug()) {
+                                            System.err.println("Failed to delete temp file after archiving error: " + deleteEx.getMessage());
+                                        }
+                                    }
+                                }
+                            });
+                        } catch (RejectedExecutionException e) {
+                            // ИСПРАВЛЕНО: если executor переполнен или закрыт, архивируем синхронно
+                            // чтобы избежать потери переименованного файла
+                            if (LoggerStatusContent.isErrorsOrDebug()) {
+                                System.err.println("Archive executor rejected task, archiving synchronously: " + e.getMessage());
+                            }
                             try {
-                                if (LoggerStatusContent.isDebug()) {
-                                    System.out.println("Starting async archiving of: " + fileToArchive.getFileName());
-                                }
                                 archiveFile(fileToArchive);
-                                // Удаляем переименованный файл после успешного архивирования
                                 Files.deleteIfExists(fileToArchive);
-                                if (LoggerStatusContent.isDebug()) {
-                                    System.out.println("Completed archiving and deleted temp file: " + fileToArchive.getFileName());
-                                }
-                            } catch (Exception e) {
+                            } catch (Exception archiveEx) {
                                 if (LoggerStatusContent.isErrorsOrDebug()) {
-                                    System.err.println("Error in async archiving: " + e.getMessage());
-                                    e.printStackTrace();
+                                    System.err.println("Error in synchronous archiving: " + archiveEx.getMessage());
+                                }
+                                // Удаляем файл даже при ошибке
+                                try {
+                                    Files.deleteIfExists(fileToArchive);
+                                } catch (IOException deleteEx) {
+                                    if (LoggerStatusContent.isErrorsOrDebug()) {
+                                        System.err.println("Failed to delete temp file: " + deleteEx.getMessage());
+                                    }
                                 }
                             }
-                        });
+                        }
                     } else if (LoggerStatusContent.isDebug()) {
                         System.out.println("Skipping rotation of empty file: " + oldFile);
                         // Удаляем пустой файл

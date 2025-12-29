@@ -2,10 +2,8 @@ package io.bitdive.parent.trasirovka.agent.utils;
 
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.databind.AnnotationIntrospector;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.*;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.jsontype.impl.LaissezFaireSubTypeValidator;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
@@ -38,14 +36,11 @@ public class ReflectionUtils {
 
     public static void init(List<StdTypeResolverBuilder> builders ) {
 
-        mapper= new ObjectMapper();
+        mapper= JsonMapper.builder()
+                .disable(MapperFeature.USE_ANNOTATIONS)
+                .build();
 
         SpringOptionalSerializers.tryRegisterSpringSortSerializer(mapper);
-
-        AnnotationIntrospector base = mapper.getSerializationConfig().getAnnotationIntrospector();
-        mapper.setAnnotationIntrospector(
-                AnnotationIntrospector.pair(new IgnoreForeignSerDeIntrospector("io.bitdive."), base)
-        );
 
         mapper.enable(SerializationFeature.WRITE_SELF_REFERENCES_AS_NULL);
         mapper.getFactory().disable(JsonGenerator.Feature.AUTO_CLOSE_TARGET);
