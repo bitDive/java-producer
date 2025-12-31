@@ -216,14 +216,104 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
-                <version>3.2.4</version>
+                <version>3.6.1</version>
+
                 <executions>
                     <execution>
+                        <id>shade</id>
                         <phase>package</phase>
                         <goals>
                             <goal>shade</goal>
                         </goals>
+
                         <configuration>
+                            <!-- Чтобы в опубликованном POM не тащились транзитивные зависимости,
+                                 ведь они уже внутри shaded-jar -->
+                            <createDependencyReducedPom>true</createDependencyReducedPom>
+
+                            <!-- Если это именно “изоляционный” артефакт, обычно делают так:
+                                 главный jar = shaded, без classifier -->
+                            <shadedArtifactAttached>false</shadedArtifactAttached>
+
+                            <!-- Явно укажи, что именно шейдить (так меньше сюрпризов) -->
+                            <artifactSet>
+                                <includes>
+                                    <include>com.fasterxml.jackson.core:*</include>
+                                    <include>com.fasterxml.jackson.datatype:*</include>
+                                    <include>com.fasterxml.jackson.module:*</include>
+
+                                    <include>org.yaml:snakeyaml</include>
+                                    <include>com.bettercloud:vault-java-driver</include>
+                                    <include>org.bouncycastle:*</include>
+
+                                    <include>net.bytebuddy:*</include>
+                                    <include>org.aspectj:aspectjweaver</include>
+
+                                    <include>commons-io:commons-io</include>
+                                    <include>org.apache.commons:commons-lang3</include>
+                                    <include>com.thoughtworks.paranamer:paranamer</include>
+                                    <include>com.github.f4b6a3:uuid-creator</include>
+                                </includes>
+                            </artifactSet>
+
+                            <relocations>
+                                <relocation>
+                                    <pattern>com.fasterxml.jackson</pattern>
+                                    <shadedPattern>io.bitdive.shaded.com.fasterxml.jackson</shadedPattern>
+                                </relocation>
+
+                                <relocation>
+                                    <pattern>org.yaml.snakeyaml</pattern>
+                                    <shadedPattern>io.bitdive.shaded.org.yaml.snakeyaml</shadedPattern>
+                                </relocation>
+
+                                <relocation>
+                                    <pattern>com.bettercloud.vault</pattern>
+                                    <shadedPattern>io.bitdive.shaded.com.bettercloud.vault</shadedPattern>
+                                </relocation>
+
+                                <relocation>
+                                    <pattern>org.bouncycastle</pattern>
+                                    <shadedPattern>io.bitdive.shaded.org.bouncycastle</shadedPattern>
+                                </relocation>
+
+                                <relocation>
+                                    <pattern>net.bytebuddy</pattern>
+                                    <shadedPattern>io.bitdive.shaded.net.bytebuddy</shadedPattern>
+                                </relocation>
+
+                                <relocation>
+                                    <pattern>org.aspectj</pattern>
+                                    <shadedPattern>io.bitdive.shaded.org.aspectj</shadedPattern>
+                                </relocation>
+
+                                <relocation>
+                                    <pattern>com.thoughtworks.paranamer</pattern>
+                                    <shadedPattern>io.bitdive.shaded.com.thoughtworks.paranamer</shadedPattern>
+                                </relocation>
+
+                                <relocation>
+                                    <pattern>org.apache.commons.lang3</pattern>
+                                    <shadedPattern>io.bitdive.shaded.org.apache.commons.lang3</shadedPattern>
+                                </relocation>
+
+                                <relocation>
+                                    <pattern>org.apache.commons.io</pattern>
+                                    <shadedPattern>io.bitdive.shaded.org.apache.commons.io</shadedPattern>
+                                </relocation>
+
+                                <!-- если тебе реально нужен relocation именно org.objectweb.asm -->
+                                <relocation>
+                                    <pattern>org.objectweb.asm</pattern>
+                                    <shadedPattern>io.bitdive.shaded.org.objectweb.asm</shadedPattern>
+                                </relocation>
+                            </relocations>
+
+                            <transformers>
+                                <!-- Чтобы META-INF/services корректно пережил relocation -->
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                            </transformers>
+
                             <filters>
                                 <filter>
                                     <artifact>*:*</artifact>
@@ -232,19 +322,12 @@
                                         <exclude>META-INF/*.DSA</exclude>
                                         <exclude>META-INF/*.RSA</exclude>
                                         <exclude>META-INF/*.kotlin_module</exclude>
-                                    </excludes>
-                                </filter>
-                                <filter>
-                                    <artifact>com.fasterxml.jackson.datatype:jackson-datatype-hibernate5</artifact>
-                                    <artifact>com.fasterxml.jackson.datatype:jackson-datatype-hibernate6</artifact>
-                                    <artifact>com.fasterxml.jackson.datatype:jackson-datatype-jsr310</artifact>
-                                    <artifact>com.fasterxml.jackson.datatype:jackson-datatype-jdk8</artifact>
-                                    <artifact>com.fasterxml.jackson.datatype:jackson-module-afterburner</artifact>
-                                    <excludes>
-                                        <exclude>META-INF/services/com.fasterxml.jackson.databind.Module</exclude>
+                                        <exclude>module-info.class</exclude>
                                     </excludes>
                                 </filter>
                             </filters>
+
+                            <minimizeJar>false</minimizeJar>
                         </configuration>
                     </execution>
                 </executions>

@@ -42,6 +42,7 @@ public class ReflectionUtils {
 
         SpringOptionalSerializers.tryRegisterSpringSortSerializer(mapper);
 
+
         mapper.enable(SerializationFeature.WRITE_SELF_REFERENCES_AS_NULL);
         mapper.getFactory().disable(JsonGenerator.Feature.AUTO_CLOSE_TARGET);
 
@@ -80,7 +81,8 @@ public class ReflectionUtils {
                 JsonTypeInfo.As.PROPERTY
         );
 
-        builders.forEach(builder -> {
+        builders.forEach(builder ->
+        {
             mapper.setDefaultTyping(builder);
         });
 
