@@ -151,7 +151,8 @@ public class MessageService {
     }
 
     public static void sendMessageStart(String messageId,
-                                        String className, String methodName, String traceId, String spanId,
+                                        String className, String methodName, String abstractResolverClass,
+                                        String traceId, String spanId,
                                         OffsetDateTime dateStart, String parentMessage, boolean inPointFlag,
                                         String args, String operationType, String urlRequest, String serviceCallId,
                                         String methodInpointName,
@@ -177,13 +178,15 @@ public class MessageService {
                 serviceCallId,
                 methodInpointName,
                 messageInpointId,
-                classInpointName
+                classInpointName,
+                abstractResolverClass
                 ));
     }
 
     // Overload for REST: includes method/headers/body/charset fields
     public static void sendMessageStart(String messageId,
-                                        String className, String methodName, String traceId, String spanId,
+                                        String className, String methodName, String abstractResolverClass,
+                                        String traceId, String spanId,
                                         OffsetDateTime dateStart, String parentMessage, boolean inPointFlag,
                                         String args, String operationType, String urlRequest, String serviceCallId,
                                         String methodInpointName,
@@ -212,6 +215,7 @@ public class MessageService {
                 methodInpointName,
                 messageInpointId,
                 classInpointName,
+                abstractResolverClass,
                 (httpHeaders != null ? httpHeaders : ""),
                 (httpBody != null ? httpBody : "")
         ));

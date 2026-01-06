@@ -40,6 +40,7 @@ public class RepositoryAspect {
                     UUIDMessage,
                     targetClass.getName(),
                     methodSig.getName(),
+                    "",
                     ContextManager.getTraceId(),
                     ContextManager.getSpanId(),
                     OffsetDateTime.now(),

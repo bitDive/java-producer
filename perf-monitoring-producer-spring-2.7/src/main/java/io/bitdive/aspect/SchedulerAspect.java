@@ -40,6 +40,7 @@ public class SchedulerAspect {
                     UUIDMessage,
                     methodSig.getDeclaringTypeName(),
                     methodSig.getName(),
+                    "",
                     ContextManager.getTraceId(),
                     ContextManager.getSpanId(),
                     OffsetDateTime.now(),

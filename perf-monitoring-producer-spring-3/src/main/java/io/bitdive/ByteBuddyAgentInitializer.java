@@ -1,10 +1,10 @@
 package io.bitdive;
 
-import com.fasterxml.jackson.annotation.JsonTypeInfo;
-import com.fasterxml.jackson.databind.JavaType;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.jsontype.impl.LaissezFaireSubTypeValidator;
-import com.fasterxml.jackson.databind.jsontype.impl.StdTypeResolverBuilder;
+import io.bitdive.shaded.com.fasterxml.jackson.annotation.JsonTypeInfo;
+import io.bitdive.shaded.com.fasterxml.jackson.databind.JavaType;
+import io.bitdive.shaded.com.fasterxml.jackson.databind.ObjectMapper;
+import io.bitdive.shaded.com.fasterxml.jackson.databind.jsontype.impl.LaissezFaireSubTypeValidator;
+import io.bitdive.shaded.com.fasterxml.jackson.databind.jsontype.impl.StdTypeResolverBuilder;
 import io.bitdive.jvm_metrics.GenerateJvmMetrics;
 import io.bitdive.parent.init.MonitoringStarting;
 import io.bitdive.parent.message_producer.LibraryLoggerConfig;

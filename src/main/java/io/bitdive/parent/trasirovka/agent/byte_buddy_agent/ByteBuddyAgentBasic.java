@@ -15,20 +15,20 @@ import net.bytebuddy.agent.builder.ResettableClassFileTransformer;
 import net.bytebuddy.description.NamedElement;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.implementation.MethodDelegation;
-import net.bytebuddy.implementation.bind.annotation.AllArguments;
-import net.bytebuddy.implementation.bind.annotation.Origin;
-import net.bytebuddy.implementation.bind.annotation.RuntimeType;
-import net.bytebuddy.implementation.bind.annotation.SuperCall;
+import net.bytebuddy.implementation.bind.annotation.*;
 import net.bytebuddy.matcher.ElementMatcher;
 import net.bytebuddy.matcher.ElementMatchers;
 
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.lang.reflect.Proxy;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static io.bitdive.parent.message_producer.MessageService.sendMessageEnd;
 import static io.bitdive.parent.message_producer.MessageService.sendMessageStart;
@@ -37,6 +37,7 @@ import static io.bitdive.parent.utils.UtilsDataConvert.*;
 import static net.bytebuddy.matcher.ElementMatchers.*;
 
 public class ByteBuddyAgentBasic  {
+    private static final ConcurrentHashMap<Class<?>, Class<?>> UNWRAP_CACHE = new ConcurrentHashMap<>();
 
     public static ElementMatcher.Junction<TypeDescription> getSpringComponentMatcher() {
         boolean monitoringOnlySpringComponent = YamlParserConfig.getProfilingConfig()
@@ -125,6 +126,7 @@ public class ByteBuddyAgentBasic  {
 
         @RuntimeType
         public static Object intercept(
+                @This(optional = true) Object thiz,
                 @Origin Method method,
                 @AllArguments Object[] args,
                 @SuperCall Callable<?> callable) throws Throwable {
@@ -167,6 +169,7 @@ public class ByteBuddyAgentBasic  {
                     UUIDMessage = UuidCreator.getTimeBased().toString();
                 }
 
+                String abstractResolverClass = resolveAbstractRealClassName(thiz, method);
                 if (flagNewSpan.getVal()) {
                     ContextManager.setMethodInpointName(method.getName());
                     ContextManager.setClassInpointName(method.getDeclaringClass().getName());
@@ -239,6 +242,7 @@ public class ByteBuddyAgentBasic  {
                             UUIDMessage,
                             method.getDeclaringClass().getName(),
                             method.getName(),
+                            abstractResolverClass,
                             ContextManager.getTraceId(),
                             ContextManager.getSpanId(),
                             OffsetDateTime.now(),
@@ -263,6 +267,7 @@ public class ByteBuddyAgentBasic  {
                             UUIDMessage,
                             method.getDeclaringClass().getName(),
                             method.getName(),
+                            abstractResolverClass,
                             ContextManager.getTraceId(),
                             ContextManager.getSpanId(),
                             OffsetDateTime.now(),
@@ -323,5 +328,37 @@ public class ByteBuddyAgentBasic  {
             }
             return result;
         }
+    }
+
+    private static String resolveAbstractRealClassName(@This(optional = true) Object thiz, Method method) {
+        Class<?> declared = method.getDeclaringClass();
+
+
+        if (declared.isInterface() || !Modifier.isAbstract(declared.getModifiers())) {
+            return null;
+        }
+        /*if (!declared.isInterface() && !Modifier.isAbstract(declared.getModifiers())) {
+            return declared.getName();
+        }*/
+
+        if (thiz == null) {
+            return declared.getName();
+        }
+
+        Class<?> runtime = unwrapProxyClass(thiz.getClass());
+        return runtime.getName();
+    }
+
+    private static Class<?> unwrapProxyClass(Class<?> c) {
+        return UNWRAP_CACHE.computeIfAbsent(c, cls -> {
+            String n = cls.getName();
+
+            if (n.contains("$$SpringCGLIB$$") || n.contains("$$EnhancerBySpringCGLIB$$") || n.contains("CGLIB")) {
+                Class<?> sc = cls.getSuperclass();
+                if (sc != null && sc != Object.class) return sc;
+            }
+
+            return cls;
+        });
     }
 }

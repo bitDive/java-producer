@@ -1,9 +1,8 @@
 package io.bitdive.jvm_metrics;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import io.bitdive.shaded.com.fasterxml.jackson.databind.ObjectMapper;
+import io.bitdive.shaded.com.fasterxml.jackson.databind.SerializationFeature;
+import io.bitdive.shaded.com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
 import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
