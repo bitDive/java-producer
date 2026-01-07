@@ -3,6 +3,7 @@ package io.bitdive.parent.trasirovka.agent.byte_buddy_agent;
 import com.github.f4b6a3.uuid.UuidCreator;
 import io.bitdive.parent.trasirovka.agent.utils.ContextManager;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
+import io.bitdive.parent.trasirovka.agent.utils.OutgoingRestTemplateBodyContext;
 import io.bitdive.parent.trasirovka.agent.utils.ReflectionUtils;
 import io.bitdive.parent.trasirovka.agent.utils.RestUtils;
 import net.bytebuddy.agent.builder.AgentBuilder;
@@ -32,6 +33,16 @@ import static io.bitdive.parent.trasirovka.agent.utils.RestUtils.normalizeRespon
 public class ByteBuddyAgentRestTemplateRequestWeb {
     public static AgentBuilder  init(AgentBuilder agentBuilder) {
         try {
+            // 1) Capture original request body object (before serialization) for RestTemplate HttpEntity callbacks.
+            // Works mainly for Spring 5 / Boot 2 where ClientHttpRequest only has ByteArrayOutputStream.
+            agentBuilder = agentBuilder
+                    .type(ElementMatchers.named("org.springframework.web.client.RestTemplate$HttpEntityRequestCallback"))
+                    .transform((builder, typeDescription, classLoader, module, dd) ->
+                            builder.method(ElementMatchers.named("doWithRequest"))
+                                    .intercept(MethodDelegation.to(RestTemplateHttpEntityRequestCallbackInterceptor.class))
+                    );
+
+            // 2) Intercept execution of ClientHttpRequest to emit tracing.
             return agentBuilder
                     .type(ElementMatchers.hasSuperType(
                             ElementMatchers.named("org.springframework.http.client.ClientHttpRequest")
@@ -45,6 +56,93 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
                 System.err.println("Not found class org.springframework.http.client.ClientHttpRequest in ClassLoader.");
         }
         return agentBuilder;
+    }
+
+    /**
+     * Captures original body object from RestTemplate callback, before it is written into ClientHttpRequest#getBody().
+     * This allows preserving concrete DTO type (e.g. Bank) for Spring Boot 2.
+     */
+    public static class RestTemplateHttpEntityRequestCallbackInterceptor {
+        @RuntimeType
+        public static Object intercept(@SuperCall Callable<?> zuper,
+                                       @This Object callback) throws Throwable {
+            try {
+                Object body = extractBodyFromCallback(callback);
+                if (body != null) {
+                    OutgoingRestTemplateBodyContext.set(body);
+                }
+            } catch (Exception ignored) {
+                // best-effort
+            }
+            return zuper.call();
+        }
+
+        private static Object extractBodyFromCallback(Object callback) {
+            if (callback == null) return null;
+
+            // Most Spring versions have either:
+            // - field "requestEntity" (HttpEntity<?>) with getBody()
+            // - field "requestBody" (Object) directly
+            Object httpEntity = getFieldValueQuietly(callback, "requestEntity");
+            if (httpEntity != null) {
+                Object body = invokeMethodQuietly(httpEntity, "getBody");
+                if (body != null) return body;
+            }
+
+            Object requestBody = getFieldValueQuietly(callback, "requestBody");
+            if (requestBody != null) return requestBody;
+
+            // Fallback: scan declared fields for something that looks like HttpEntity / body
+            try {
+                Class<?> c = callback.getClass();
+                while (c != null) {
+                    for (Field f : c.getDeclaredFields()) {
+                        f.setAccessible(true);
+                        Object v = f.get(callback);
+                        if (v == null) continue;
+                        // try HttpEntity#getBody
+                        Object b = invokeMethodQuietly(v, "getBody");
+                        if (b != null) return b;
+                    }
+                    c = c.getSuperclass();
+                }
+            } catch (Exception ignored) {
+            }
+            return null;
+        }
+
+        private static Object getFieldValueQuietly(Object target, String fieldName) {
+            try {
+                Class<?> c = target.getClass();
+                while (c != null) {
+                    try {
+                        Field f = c.getDeclaredField(fieldName);
+                        f.setAccessible(true);
+                        return f.get(target);
+                    } catch (NoSuchFieldException e) {
+                        c = c.getSuperclass();
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+            return null;
+        }
+
+        private static Object invokeMethodQuietly(Object target, String methodName) {
+            try {
+                Method m = target.getClass().getMethod(methodName);
+                m.setAccessible(true);
+                return m.invoke(target);
+            } catch (Exception ignored) {
+                try {
+                    Method m = target.getClass().getDeclaredMethod(methodName);
+                    m.setAccessible(true);
+                    return m.invoke(target);
+                } catch (Exception ignored2) {
+                    return null;
+                }
+            }
+        }
     }
 
     public static class ResponseWeRestTemplateInterceptor {
@@ -125,7 +223,13 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
                         }
                     }
 
-                    body = Optional.ofNullable(bodyObjectVal).map(RestUtils::normalizeRequestBody).orElse("");
+                    // Prefer original object captured earlier (keeps concrete DTO type in Spring Boot 2).
+                    Object capturedBody = OutgoingRestTemplateBodyContext.getAndClear();
+                    if (capturedBody != null) {
+                        body = ReflectionUtils.objectToString(capturedBody);
+                    } else {
+                        body = Optional.ofNullable(bodyObjectVal).map(RestUtils::normalizeRequestBody).orElse("");
+                    }
 
                     Method getFirstMethod = headers.getClass().getMethod("getFirst", String.class);
                     if (getFirstMethod.invoke(headers, "x-BitDiv-custom-span-id") == null) {
@@ -134,10 +238,6 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
                         addHeaderMethod.invoke(headers, "x-BitDiv-custom-span-id", ContextManager.getSpanId());
                         addHeaderMethod.invoke(headers, "x-BitDiv-custom-parent-message-id", ContextManager.getMessageIdQueueNew());
                         addHeaderMethod.invoke(headers, "x-BitDiv-custom-service-call-id", serviceCallId);
-
-                        // addHeaderMethod.invoke(headers, "x-BitDiv-custom-method-inpoint-name", ContextManager.getMethodInpointName());
-                        // addHeaderMethod.invoke(headers, "x-BitDiv-custom-class-inpoint-name", ContextManager.getClassInpointName());
-                        //  addHeaderMethod.invoke(headers, "x-BitDiv-custom-message-inpoint-id", ContextManager.getMessageInpointId());
                     }
                 }
             } catch (Exception e) {
@@ -152,6 +252,8 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
                 thrown = t;
                 throw t;
             } finally {
+                // Ensure cleanup even if we exited early or an exception happened
+                OutgoingRestTemplateBodyContext.clearSafely();
                 if (successLogin) {
                     dateEnd = OffsetDateTime.now();
 

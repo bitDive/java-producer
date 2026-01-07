@@ -1,10 +1,10 @@
 package io.bitdive.parent.trasirovka.agent.utils;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.lang.reflect.Method;
 import java.nio.charset.Charset;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -137,7 +137,7 @@ public class RestUtils {
         if (bodyObj == null)
             return "";
 
-        // Специальная обработка для FastByteArrayOutputStream
+        // Специальная обработка для FastByteArrayOutputStream (Spring 3+)
         if (bodyObj.getClass().getName().equals("org.springframework.util.FastByteArrayOutputStream")) {
             try {
                 Method toByteArrayMethod = bodyObj.getClass().getMethod("toByteArray");
@@ -150,6 +150,21 @@ public class RestUtils {
                 return "";
             } catch (Exception e) {
                 return "[Error reading FastByteArrayOutputStream: " + e.getMessage() + "]";
+            }
+        }
+
+        // Специальная обработка для ByteArrayOutputStream (Spring 2)
+        // В Spring 2 getBody() может возвращать java.io.ByteArrayOutputStream
+        if (bodyObj instanceof ByteArrayOutputStream) {
+            try {
+                byte[] bytes = ((ByteArrayOutputStream) bodyObj).toByteArray();
+                // Преобразуем байты в строку
+                if (bytes != null && bytes.length > 0) {
+                    return new String(bytes, Charset.defaultCharset());
+                }
+                return "";
+            } catch (Exception e) {
+                return "[Error reading ByteArrayOutputStream: " + e.getMessage() + "]";
             }
         }
 

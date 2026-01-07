@@ -6,15 +6,19 @@ import io.bitdive.parent.message_producer.LibraryLoggerConfig;
 import io.bitdive.parent.parserConfig.ConfigForServiceDTO;
 import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
+import io.bitdive.parent.trasirovka.agent.utils.ReflectionUtils;
 import io.bitdive.parent.utils.ByteBuddyConfigLoader;
 import io.bitdive.parent.utils.LibraryVersionBitDive;
+import io.bitdive.shaded.com.fasterxml.jackson.annotation.JsonTypeInfo;
+import io.bitdive.shaded.com.fasterxml.jackson.databind.JavaType;
+import io.bitdive.shaded.com.fasterxml.jackson.databind.ObjectMapper;
+import io.bitdive.shaded.com.fasterxml.jackson.databind.jsontype.impl.LaissezFaireSubTypeValidator;
+import io.bitdive.shaded.com.fasterxml.jackson.databind.jsontype.impl.StdTypeResolverBuilder;
 import org.springframework.context.ApplicationContextInitializer;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.env.ConfigurableEnvironment;
 
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -114,6 +118,8 @@ public class ByteBuddyAgentInitializer implements ApplicationContextInitializer<
             LibraryLoggerConfig.init();
             MonitoringStarting.init();
             GenerateJvmMetrics.init();
+
+            ReflectionUtils.init(new ArrayList<>());
 
             initializeAgent = true;
             YamlParserConfig.setWork(true);
