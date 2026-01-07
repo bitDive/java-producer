@@ -56,7 +56,7 @@ public class ByteBuddyAgentInitializer implements ApplicationContextInitializer<
 
             Runnable task = () -> {
                 try {
-                    if (initializeAgent) {
+                    if (initializeAgent || YamlParserConfig.isWork()) {
                         YamlParserConfig.setWork(false);
                         YamlParserConfig.loadConfig(configForServiceDTOFinal);
                         YamlParserConfig.getProfilingConfig().detectActualConfig(activeProfiles);
@@ -64,8 +64,7 @@ public class ByteBuddyAgentInitializer implements ApplicationContextInitializer<
                         if (activeProfiles.length > 0) {
                             YamlParserConfig.getProfilingConfig().getApplication().setModuleName(
                                     YamlParserConfig.getProfilingConfig().getApplication().getModuleName() + "-" +
-                                            String.join("-", activeProfiles)
-                            );
+                                            String.join("-", activeProfiles));
                         }
 
                         LibraryLoggerConfig.init();
@@ -119,7 +118,30 @@ public class ByteBuddyAgentInitializer implements ApplicationContextInitializer<
             MonitoringStarting.init();
             GenerateJvmMetrics.init();
 
-            ReflectionUtils.init(new ArrayList<>());
+            StdTypeResolverBuilder typer =
+                    new ObjectMapper.DefaultTypeResolverBuilder(
+                            ObjectMapper.DefaultTyping.NON_FINAL,
+                            LaissezFaireSubTypeValidator.instance
+                    ) {
+                        @Override
+                        public boolean useForType(JavaType t) {
+                            Class<?> raw = t.getRawClass();
+
+                            // 1) всегда добавляем @class для records
+                            if (isRecordClass(raw)) {
+                                return true;
+                            }
+
+                            // 2) всё остальное – как у стандартного NON_FINAL
+                            return super.useForType(t);
+                        }
+                    };
+
+            typer.init(JsonTypeInfo.Id.CLASS, null);
+            typer.inclusion(JsonTypeInfo.As.PROPERTY);
+            typer.typeProperty("@class");
+
+            ReflectionUtils.init(Collections.singletonList(typer));
 
             initializeAgent = true;
             YamlParserConfig.setWork(true);
@@ -130,6 +152,18 @@ public class ByteBuddyAgentInitializer implements ApplicationContextInitializer<
                 YamlParserConfig.setWork(false);
                 System.out.println("ByteBuddyAgentInitializer initialize error " + e.getMessage());
             }
+        }
+    }
+
+    /**
+     * Java 8-safe record detection (Spring 3 uses {@code Class#isRecord()}, but that API exists only on newer JDKs).
+     */
+    private static boolean isRecordClass(Class<?> raw) {
+        try {
+            Object res = Class.class.getMethod("isRecord").invoke(raw);
+            return res instanceof Boolean && (Boolean) res;
+        } catch (Throwable ignore) {
+            return false;
         }
     }
 

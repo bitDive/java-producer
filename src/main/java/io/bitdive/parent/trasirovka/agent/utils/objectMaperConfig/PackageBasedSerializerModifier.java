@@ -12,6 +12,10 @@ import com.fasterxml.jackson.databind.ser.std.StdSerializer;
 import java.io.IOException;
 import java.util.Optional;
 
+/**
+ * Serializer modifier that replaces serialization of objects from excluded packages (and Servlet Request/Response wrappers)
+ * with a safe placeholder object that preserves @class information for replay/testing.
+ */
 public class PackageBasedSerializerModifier extends BeanSerializerModifier {
 
     private final String[] excludedPackages;
@@ -29,13 +33,12 @@ public class PackageBasedSerializerModifier extends BeanSerializerModifier {
             return serializer;
         }
 
-        // Проверяем на servlet-интерфейсы и классы (безопасная проверка по имени)
-        String className = beanClass.getName();
-        if (isServletRelatedClass(className)) {
-            return new ExcludedPackageSerializer(beanClass);
+        // ✅ 1) Any ServletRequest/ServletResponse (including Spring Security wrappers) must be excluded
+        if (isServletRelatedClass(beanClass)) {
+            return new ExcludedPackageSerializer();
         }
 
-        // Проверяем исключенные пакеты
+        // ✅ 2) Exclude by package prefix list
         String packageName = Optional.ofNullable(beanClass.getPackage())
                 .map(Package::getName)
                 .orElse(null);
@@ -45,9 +48,8 @@ public class PackageBasedSerializerModifier extends BeanSerializerModifier {
         }
 
         for (String excludedPackage : excludedPackages) {
-            if (packageName.startsWith(excludedPackage)) {
-                // Используем StdSerializer для правильной поддержки TypeSerializer
-                return new ExcludedPackageSerializer(beanClass);
+            if (excludedPackage != null && !excludedPackage.isEmpty() && packageName.startsWith(excludedPackage)) {
+                return new ExcludedPackageSerializer();
             }
         }
 
@@ -55,33 +57,46 @@ public class PackageBasedSerializerModifier extends BeanSerializerModifier {
     }
 
     /**
-     * Проверяет, является ли класс связанным с servlet API (безопасная проверка по имени класса).
-     * Это предотвращает попытки сериализации HttpServletRequest/Response и их оберток.
+     * Detects servlet-related objects via implemented interfaces (by name) to avoid hard dependency on servlet-api.
+     * This catches wrappers like StrictFirewalledRequest, HeaderWriterRequest, etc.
      */
-    private static boolean isServletRelatedClass(String className) {
-        if (className == null) {
+    private static boolean isServletRelatedClass(Class<?> cls) {
+        return implementsInterfaceByName(cls, "javax.servlet.ServletRequest")
+                || implementsInterfaceByName(cls, "jakarta.servlet.ServletRequest")
+                || implementsInterfaceByName(cls, "javax.servlet.ServletResponse")
+                || implementsInterfaceByName(cls, "jakarta.servlet.ServletResponse")
+                || implementsInterfaceByName(cls, "javax.servlet.http.HttpServletRequest")
+                || implementsInterfaceByName(cls, "jakarta.servlet.http.HttpServletRequest")
+                || implementsInterfaceByName(cls, "javax.servlet.http.HttpServletResponse")
+                || implementsInterfaceByName(cls, "jakarta.servlet.http.HttpServletResponse");
+    }
+
+    private static boolean implementsInterfaceByName(Class<?> cls, String ifaceName) {
+        if (cls == null || cls == Object.class) {
             return false;
         }
-        
-        // Проверяем основные servlet интерфейсы и классы
-        return className.contains("javax.servlet") ||
-               className.contains("jakarta.servlet") ||
-               className.contains("HttpServletRequest") ||
-               className.contains("HttpServletResponse") ||
-               className.contains("ServletRequest") ||
-               className.contains("ServletResponse") ||
-               className.contains("ServletContext") ||
-               className.contains("FilterChain") ||
-               className.contains("RequestDispatcher");
+
+        for (Class<?> i : cls.getInterfaces()) {
+            if (ifaceName.equals(i.getName())) {
+                return true;
+            }
+            // interfaces can extend interfaces
+            if (implementsInterfaceByName(i, ifaceName)) {
+                return true;
+            }
+        }
+
+        // class hierarchy
+        return implementsInterfaceByName(cls.getSuperclass(), ifaceName);
     }
 
     /**
-     * Сериализатор для исключенных пакетов.
-     * Сохраняет информацию о типе (@class) для возможности десериализации при тестировании.
+     * Serializer for excluded objects.
+     * Writes a safe placeholder object and preserves runtime class name in "@class".
      */
     private static class ExcludedPackageSerializer extends StdSerializer<Object> {
 
-        protected ExcludedPackageSerializer(Class<?> targetClass) {
+        protected ExcludedPackageSerializer() {
             super(Object.class);
         }
 
@@ -91,12 +106,12 @@ public class PackageBasedSerializerModifier extends BeanSerializerModifier {
                 gen.writeNull();
                 return;
             }
-            
-            // Безопасное получение информации о классе без вызова методов объекта
-            String className = value.getClass().getName();
-            String packageName = getPackageNameSafely(value.getClass());
-            
-            // Сохраняем информацию о типе для возможности десериализации
+
+            // Avoid calling any methods on the object; only reflect its class.
+            Class<?> clazz = value.getClass();
+            String className = clazz.getName();
+            String packageName = getPackageNameSafely(clazz);
+
             gen.writeStartObject();
             gen.writeStringField("@class", className);
             gen.writeStringField("value", "[excluded: " + packageName + "]");
@@ -105,27 +120,21 @@ public class PackageBasedSerializerModifier extends BeanSerializerModifier {
 
         @Override
         public void serializeWithType(Object value, JsonGenerator gen, SerializerProvider serializers,
-                                     TypeSerializer typeSer) throws IOException {
-            // Упрощенный подход: используем обычный serialize, который уже правильно работает
-            // и записывает @class вручную. Это избегает проблем с контекстом TypeSerializer
-            // при сериализации объектов внутри массивов.
+                                      TypeSerializer typeSer) throws IOException {
+            // We already write "@class" manually and must avoid TypeSerializer edge-cases in arrays/collections.
             serialize(value, gen, serializers);
         }
 
-        /**
-         * Безопасное получение имени пакета без вызова методов, которые могут бросить исключение.
-         */
         private static String getPackageNameSafely(Class<?> clazz) {
             try {
                 Package pkg = clazz.getPackage();
                 if (pkg != null) {
                     return pkg.getName();
                 }
-            } catch (Exception e) {
-                // Игнорируем исключения при получении пакета
+            } catch (Exception ignored) {
+                // ignore
             }
-            
-            // Fallback: извлекаем пакет из имени класса
+
             String className = clazz.getName();
             int lastDot = className.lastIndexOf('.');
             if (lastDot > 0) {

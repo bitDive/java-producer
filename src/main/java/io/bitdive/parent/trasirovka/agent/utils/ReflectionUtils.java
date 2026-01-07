@@ -37,7 +37,8 @@ public class ReflectionUtils {
     public static void init(List<StdTypeResolverBuilder> builders ) {
 
         mapper= JsonMapper.builder()
-                .disable(MapperFeature.USE_ANNOTATIONS)
+                .enable(MapperFeature.USE_ANNOTATIONS)
+                .annotationIntrospector(new OnlyJsonIgnoreIntrospector())
                 .build();
 
         SpringOptionalSerializers.tryRegisterSpringSortSerializer(mapper);
