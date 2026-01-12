@@ -1,5 +1,6 @@
 package io.bitdive.parent.trasirovka.agent.utils;
 
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.*;
@@ -45,6 +46,15 @@ public class ReflectionUtils {
                 .build();
 
         SpringOptionalSerializers.tryRegisterSpringSortSerializer(mapper);
+
+        mapper.setVisibility(
+                mapper.getVisibilityChecker()
+                        .withFieldVisibility(JsonAutoDetect.Visibility.ANY)
+                        .withGetterVisibility(JsonAutoDetect.Visibility.NONE)
+                        .withIsGetterVisibility(JsonAutoDetect.Visibility.NONE)
+                        .withSetterVisibility(JsonAutoDetect.Visibility.NONE)
+                        .withCreatorVisibility(JsonAutoDetect.Visibility.ANY)
+        );
 
 
         mapper.enable(SerializationFeature.WRITE_SELF_REFERENCES_AS_NULL);
