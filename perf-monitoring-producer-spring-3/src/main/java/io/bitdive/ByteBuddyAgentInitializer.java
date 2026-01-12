@@ -142,7 +142,7 @@ public class ByteBuddyAgentInitializer implements ApplicationContextInitializer<
 
             String[] EXCLUDED_PACKAGES =YamlParserConfig
                     .getProfilingConfig().getMonitoring().getSerialization().getExcludedPackages();
-            
+
             ReflectionUtils.init(List.of(typer),MAX_COLLECTION_SIZE,EXCLUDED_PACKAGES);
 
             initializeAgent = true;
