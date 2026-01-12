@@ -2,6 +2,7 @@ package io.bitdive.parent.trasirovka.agent.utils;
 
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.fasterxml.jackson.annotation.PropertyAccessor;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.json.JsonMapper;
@@ -14,10 +15,13 @@ import com.fasterxml.jackson.databind.jsontype.impl.StdTypeResolverBuilder;
 import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.objectMaperConfig.*;
 import io.bitdive.parent.utils.hibernateConfig.HibernateModuleLoader;
+import lombok.Getter;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.*;
+
+import static com.fasterxml.jackson.databind.MapperFeature.USE_ANNOTATIONS;
 
 public class ReflectionUtils {
 
@@ -28,6 +32,7 @@ public class ReflectionUtils {
 
     private static final String INDICATOR = "...";
 
+    @Getter
     static ObjectMapper mapper;
     /**
      * A SAFE JSON parser for untrusted payloads (e.g., HTTP responses).
@@ -40,10 +45,7 @@ public class ReflectionUtils {
 
     public static void init(List<StdTypeResolverBuilder> builders , int MAX_COLLECTION_SIZE , String[] EXCLUDED_PACKAGES) {
 
-        mapper= JsonMapper.builder()
-                .enable(MapperFeature.USE_ANNOTATIONS)
-                .annotationIntrospector(new OnlyJsonIgnoreIntrospector())
-                .build();
+        mapper= JsonMapper.builder().disable(USE_ANNOTATIONS).build();
 
         SpringOptionalSerializers.tryRegisterSpringSortSerializer(mapper);
 
@@ -82,7 +84,12 @@ public class ReflectionUtils {
 
         mapper.registerModule(new JavaTimeModule());
         mapper.registerModule(new Jdk8Module());
-        mapper.registerModule(new AfterburnerModule());
+
+        AfterburnerModule ab =new AfterburnerModule();
+
+        ab.setUseValueClassLoader(true);
+        mapper.registerModule(ab);
+
 
         Optional.ofNullable(HibernateModuleLoader.registerHibernateModule())
                 .ifPresent(moduleHibernate ->
