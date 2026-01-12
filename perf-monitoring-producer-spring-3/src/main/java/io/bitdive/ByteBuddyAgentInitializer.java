@@ -137,7 +137,13 @@ public class ByteBuddyAgentInitializer implements ApplicationContextInitializer<
             typer.inclusion(JsonTypeInfo.As.PROPERTY);
             typer.typeProperty("@class");
 
-            ReflectionUtils.init(List.of(typer));
+            int MAX_COLLECTION_SIZE = YamlParserConfig
+                    .getProfilingConfig().getMonitoring().getSerialization().getMaxElementCollection();
+
+            String[] EXCLUDED_PACKAGES =YamlParserConfig
+                    .getProfilingConfig().getMonitoring().getSerialization().getExcludedPackages();
+            
+            ReflectionUtils.init(List.of(typer),MAX_COLLECTION_SIZE,EXCLUDED_PACKAGES);
 
             initializeAgent = true;
             YamlParserConfig.setWork(true);

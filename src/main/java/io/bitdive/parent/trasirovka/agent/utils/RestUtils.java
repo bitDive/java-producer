@@ -24,7 +24,61 @@ public class RestUtils {
             return "[byte array]";
         }
         // Иначе преобразуем массив байт в строку с использованием заданного charset
-        return new String(responseBodyBytes, responseCharset);
+        String raw = new String(responseBodyBytes, responseCharset);
+        if (isJsonContent(responseHeaders)) {
+            return ReflectionUtils.tryNormalizeJsonStringWithClass(raw);
+        }
+        return raw;
+    }
+
+    private static boolean isJsonContent(Object headers) {
+        String contentType = extractContentType(headers);
+        if (contentType == null) return false;
+        String type = contentType.toLowerCase();
+        return type.contains("json") || type.contains("+json");
+    }
+
+    private static String extractContentType(Object headers) {
+        if (headers == null) return null;
+        try {
+            if (headers instanceof Map) {
+                Map<?, ?> map = (Map<?, ?>) headers;
+                for (Map.Entry<?, ?> e : map.entrySet()) {
+                    if (e.getKey() == null) continue;
+                    String headerName = String.valueOf(e.getKey());
+                    if (!"content-type".equalsIgnoreCase(headerName)) continue;
+                    Object v = e.getValue();
+                    if (v instanceof List) {
+                        List<?> list = (List<?>) v;
+                        if (!list.isEmpty() && list.get(0) != null) return String.valueOf(list.get(0));
+                    } else if (v != null) {
+                        return String.valueOf(v);
+                    }
+                }
+                return null;
+            }
+
+            // Spring HttpHeaders: getContentType() -> MediaType
+            try {
+                Method getContentTypeMethod = headers.getClass().getMethod("getContentType");
+                getContentTypeMethod.setAccessible(true);
+                Object mediaType = getContentTypeMethod.invoke(headers);
+                return mediaType != null ? mediaType.toString() : null;
+            } catch (Exception ignored) {
+                // ignore and try getFirst
+            }
+
+            // Fallback: getFirst("Content-Type")
+            try {
+                Method getFirstMethod = headers.getClass().getMethod("getFirst", String.class);
+                Object v = getFirstMethod.invoke(headers, "Content-Type");
+                return v != null ? v.toString() : null;
+            } catch (Exception ignored) {
+                return null;
+            }
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
     private static boolean isFileResponse(Object headers) {

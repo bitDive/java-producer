@@ -24,17 +24,20 @@ public class ReflectionUtils {
             "password", "pass", "secret", "token", "key", "apikey", "auth", "credential"
     ));
 
-    private static final int MAX_COLLECTION_SIZE = YamlParserConfig
-            .getProfilingConfig().getMonitoring().getSerialization().getMaxElementCollection();
 
-    private static final String[] EXCLUDED_PACKAGES =YamlParserConfig
-            .getProfilingConfig().getMonitoring().getSerialization().getExcludedPackages();
     private static final String INDICATOR = "...";
 
     static ObjectMapper mapper;
+    /**
+     * A SAFE JSON parser for untrusted payloads (e.g., HTTP responses).
+     * Important: must NOT have default typing enabled to avoid unsafe polymorphic deserialization.
+     */
+    private static final ObjectMapper SAFE_JSON_PARSER = JsonMapper.builder()
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+            .build();
 
 
-    public static void init(List<StdTypeResolverBuilder> builders ) {
+    public static void init(List<StdTypeResolverBuilder> builders , int MAX_COLLECTION_SIZE , String[] EXCLUDED_PACKAGES) {
 
         mapper= JsonMapper.builder()
                 .enable(MapperFeature.USE_ANNOTATIONS)
@@ -100,6 +103,40 @@ public class ReflectionUtils {
                     .filter(s -> !s.equals("null")).orElse("");
         } catch (Exception e) {
             return "[Error: " + e.getMessage() + "]";
+        }
+    }
+
+    /**
+     * If {@code raw} looks like JSON object/array, parses it with a SAFE mapper and re-serializes with our
+     * typed/masked/limited {@link #mapper}. This makes {@code @class} appear in the resulting JSON where applicable.
+     *
+     * <p>Non-JSON strings are returned as-is.</p>
+     */
+    public static String tryNormalizeJsonStringWithClass(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String trimmed = raw.trim();
+        if (trimmed.isEmpty()) {
+            return "";
+        }
+
+        // We only attempt for JSON object/array to avoid turning primitives/strings into quoted JSON.
+        char first = trimmed.charAt(0);
+        if (first != '{' && first != '[') {
+            return raw;
+        }
+
+        // Avoid excessive overhead on very large payloads.
+        if (trimmed.length() > 300_000) {
+            return raw;
+        }
+
+        try {
+            Object parsed = SAFE_JSON_PARSER.readValue(trimmed, Object.class);
+            return objectToString(parsed);
+        } catch (Exception ignored) {
+            return raw;
         }
     }
 

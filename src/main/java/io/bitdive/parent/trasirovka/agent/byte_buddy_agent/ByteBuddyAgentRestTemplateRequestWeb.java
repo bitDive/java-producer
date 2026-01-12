@@ -33,8 +33,6 @@ import static io.bitdive.parent.trasirovka.agent.utils.RestUtils.normalizeRespon
 public class ByteBuddyAgentRestTemplateRequestWeb {
     public static AgentBuilder  init(AgentBuilder agentBuilder) {
         try {
-            // 1) Capture original request body object (before serialization) for RestTemplate HttpEntity callbacks.
-            // Works mainly for Spring 5 / Boot 2 where ClientHttpRequest only has ByteArrayOutputStream.
             agentBuilder = agentBuilder
                     .type(ElementMatchers.named("org.springframework.web.client.RestTemplate$HttpEntityRequestCallback"))
                     .transform((builder, typeDescription, classLoader, module, dd) ->
@@ -42,7 +40,6 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
                                     .intercept(MethodDelegation.to(RestTemplateHttpEntityRequestCallbackInterceptor.class))
                     );
 
-            // 2) Intercept execution of ClientHttpRequest to emit tracing.
             return agentBuilder
                     .type(ElementMatchers.hasSuperType(
                             ElementMatchers.named("org.springframework.http.client.ClientHttpRequest")
