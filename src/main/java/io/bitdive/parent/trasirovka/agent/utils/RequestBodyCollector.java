@@ -7,14 +7,12 @@ public class RequestBodyCollector {
     private static final ThreadLocal<ByteArrayOutputStream> bodyBufferThreadLocal = ThreadLocal.withInitial(ByteArrayOutputStream::new);
 
     public static void reset() {
-        ByteArrayOutputStream current = bodyBufferThreadLocal.get();
-        if (current != null) {
-            try {
-                current.reset();
-            } catch (Exception ignored) {
-            }
-        } else {
-            bodyBufferThreadLocal.set(new ByteArrayOutputStream());
+        // ВАЖНО: ByteArrayOutputStream.reset() не освобождает внутренний буфер (byte[]),
+        // поэтому при редких больших запросах память может "залипать" на потоках пула.
+        // Тут намеренно удаляем ThreadLocal, чтобы буфер становился доступен GC.
+        try {
+            bodyBufferThreadLocal.remove();
+        } catch (Exception ignored) {
         }
     }
 

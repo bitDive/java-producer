@@ -11,7 +11,6 @@ import io.bitdive.parent.utils.MethodTypeEnum;
 import io.bitdive.parent.utils.Pair;
 import io.bitdive.parent.utils.UtilsDataConvert;
 import net.bytebuddy.agent.builder.AgentBuilder;
-import net.bytebuddy.agent.builder.ResettableClassFileTransformer;
 import net.bytebuddy.description.NamedElement;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.implementation.MethodDelegation;
@@ -19,16 +18,13 @@ import net.bytebuddy.implementation.bind.annotation.*;
 import net.bytebuddy.matcher.ElementMatcher;
 import net.bytebuddy.matcher.ElementMatchers;
 
-import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.lang.reflect.Proxy;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 
 import static io.bitdive.parent.message_producer.MessageService.sendMessageEnd;
 import static io.bitdive.parent.message_producer.MessageService.sendMessageStart;
@@ -37,7 +33,27 @@ import static io.bitdive.parent.utils.UtilsDataConvert.*;
 import static net.bytebuddy.matcher.ElementMatchers.*;
 
 public class ByteBuddyAgentBasic  {
-    private static final ConcurrentHashMap<Class<?>, Class<?>> UNWRAP_CACHE = new ConcurrentHashMap<>();
+    /**
+     * GC-friendly cache for proxy unwrapping.
+     *
+     * <p>Using a static Map<Class, Class> can pin ClassLoaders (especially with many dynamically generated proxy
+     * classes). {@link ClassValue} automatically releases entries when the corresponding Class is unloaded.
+     */
+    private static final ClassValue<Class<?>> UNWRAP_CACHE = new ClassValue<Class<?>>() {
+        @Override
+        protected Class<?> computeValue(Class<?> cls) {
+            try {
+                String n = cls.getName();
+                if (n.contains("$$SpringCGLIB$$") || n.contains("$$EnhancerBySpringCGLIB$$") || n.contains("CGLIB")) {
+                    Class<?> sc = cls.getSuperclass();
+                    if (sc != null && sc != Object.class) return sc;
+                }
+                return cls;
+            } catch (Throwable ignored) {
+                return cls;
+            }
+        }
+    };
 
     public static ElementMatcher.Junction<TypeDescription> getSpringComponentMatcher() {
         boolean monitoringOnlySpringComponent = YamlParserConfig.getProfilingConfig()
@@ -350,15 +366,6 @@ public class ByteBuddyAgentBasic  {
     }
 
     private static Class<?> unwrapProxyClass(Class<?> c) {
-        return UNWRAP_CACHE.computeIfAbsent(c, cls -> {
-            String n = cls.getName();
-
-            if (n.contains("$$SpringCGLIB$$") || n.contains("$$EnhancerBySpringCGLIB$$") || n.contains("CGLIB")) {
-                Class<?> sc = cls.getSuperclass();
-                if (sc != null && sc != Object.class) return sc;
-            }
-
-            return cls;
-        });
+        return UNWRAP_CACHE.get(c);
     }
 }

@@ -3,11 +3,9 @@ package io.bitdive.parent.trasirovka.agent.byte_buddy_agent;
 import io.bitdive.parent.trasirovka.agent.utils.ContextManager;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import net.bytebuddy.agent.builder.AgentBuilder;
-import net.bytebuddy.agent.builder.ResettableClassFileTransformer;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.matcher.ElementMatchers;
 
-import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Method;
 import java.util.Optional;
 
@@ -27,14 +25,16 @@ public class ByteBuddyAgentCatalinaResponse {
 
         @Advice.OnMethodEnter
         public static void onEnter(@Advice.This Object responseObj) {
-            if (LoggerStatusContent.getEnabledProfile()) {
-                ContextManager.cleanupSafely();
-                io.bitdive.parent.trasirovka.agent.utils.RequestBodyCollector.cleanupSafely();
-                return;
-            }
-
+            // ВАЖНО: очистка ThreadLocal должна происходить ВСЕГДА (в т.ч. при раннем выходе и исключениях)
             try {
-                if (Optional.of(ContextManager.getUrlStart()).orElse("").toLowerCase().contains("/actuator/")) return;
+                if (LoggerStatusContent.getEnabledProfile()) {
+                    return;
+                }
+
+                // Не шлем сообщения для actuator, но контекст/буферы все равно нужно чистить в finally
+                if (Optional.of(ContextManager.getUrlStart()).orElse("").toLowerCase().contains("/actuator/")) {
+                    return;
+                }
 
                 Class<?> requestClass = responseObj.getClass();
 
@@ -60,14 +60,14 @@ public class ByteBuddyAgentCatalinaResponse {
                         ContextManager.getSpanId(),
                         status
                 );
-
+            } catch (Exception e) {
+                if (LoggerStatusContent.isErrorsOrDebug()) {
+                    System.err.println("error call finishRequest for org.apache.catalina.connector.Request  error : " + e.getMessage());
+                }
+            } finally {
                 // КРИТИЧНО: Очистка всех ThreadLocal переменных после завершения запроса
                 ContextManager.cleanupSafely();
                 io.bitdive.parent.trasirovka.agent.utils.RequestBodyCollector.cleanupSafely();
-            } catch (Exception e) {
-                if (LoggerStatusContent.isErrorsOrDebug())
-                    System.err.println("error call finishRequest for org.apache.catalina.connector.Request  error : " + e.getMessage());
-
             }
         }
     }
