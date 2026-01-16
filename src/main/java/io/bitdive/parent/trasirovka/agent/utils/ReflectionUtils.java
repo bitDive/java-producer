@@ -43,7 +43,12 @@ public class ReflectionUtils {
             .build();
 
 
-    public static void init(List<StdTypeResolverBuilder> builders , int MAX_COLLECTION_SIZE , String[] EXCLUDED_PACKAGES) {
+    public static void init(List<StdTypeResolverBuilder> builders ,
+                            int MAX_COLLECTION_SIZE ,
+                            String[] EXCLUDED_PACKAGES,
+                            List<SimpleModule> simpleModuleList
+
+    ) {
 
         mapper= JsonMapper.builder().disable(USE_ANNOTATIONS).build();
 
@@ -66,6 +71,12 @@ public class ReflectionUtils {
         module.setSerializerModifier(new CollectionSizeLimiter(MAX_COLLECTION_SIZE, INDICATOR));
         mapper.registerModule(module);
 
+        simpleModuleList.forEach((simpleModule) -> {
+            mapper.registerModule(simpleModule);
+        });
+
+
+
         SimpleModule moduleMask = new SimpleModule();
         moduleMask.setSerializerModifier(new MaskingFilter(SENSITIVE_KEYWORDS));
         mapper.registerModule(moduleMask);
@@ -73,6 +84,10 @@ public class ReflectionUtils {
         SimpleModule ignoreModule = new SimpleModule();
         ignoreModule.setSerializerModifier(new PackageBasedSerializerModifier(EXCLUDED_PACKAGES));
         mapper.registerModule(ignoreModule);
+
+        SimpleModule LambdaSerializer = new SimpleModule();
+        LambdaSerializer.setSerializerModifier(new LambdaSerializerModifier());
+        mapper.registerModule(LambdaSerializer);
 
         // Модуль для компактной сериализации исключений (Throwable)
         mapper.registerModule(new ThrowableSerializerModule());

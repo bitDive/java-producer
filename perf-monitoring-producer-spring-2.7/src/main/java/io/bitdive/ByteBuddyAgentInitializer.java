@@ -1,6 +1,7 @@
 package io.bitdive;
 
 import io.bitdive.jvm_metrics.GenerateJvmMetrics;
+import io.bitdive.objectMaperConfig.BeanLikeSerializerModifier;
 import io.bitdive.parent.init.MonitoringStarting;
 import io.bitdive.parent.message_producer.LibraryLoggerConfig;
 import io.bitdive.parent.parserConfig.ConfigForServiceDTO;
@@ -14,6 +15,7 @@ import io.bitdive.shaded.com.fasterxml.jackson.databind.JavaType;
 import io.bitdive.shaded.com.fasterxml.jackson.databind.ObjectMapper;
 import io.bitdive.shaded.com.fasterxml.jackson.databind.jsontype.impl.LaissezFaireSubTypeValidator;
 import io.bitdive.shaded.com.fasterxml.jackson.databind.jsontype.impl.StdTypeResolverBuilder;
+import io.bitdive.shaded.com.fasterxml.jackson.databind.module.SimpleModule;
 import org.springframework.context.ApplicationContextInitializer;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.env.ConfigurableEnvironment;
@@ -147,7 +149,13 @@ public class ByteBuddyAgentInitializer implements ApplicationContextInitializer<
             String[] EXCLUDED_PACKAGES =YamlParserConfig
                     .getProfilingConfig().getMonitoring().getSerialization().getExcludedPackages();
 
-            ReflectionUtils.init(Collections.singletonList(typer),MAX_COLLECTION_SIZE,EXCLUDED_PACKAGES);
+            SimpleModule module = new SimpleModule();
+            module.setSerializerModifier(new BeanLikeSerializerModifier());
+
+            List<SimpleModule> simpleModuleList = new ArrayList<>();
+            simpleModuleList.add(module);
+
+            ReflectionUtils.init(Collections.singletonList(typer),MAX_COLLECTION_SIZE,EXCLUDED_PACKAGES,simpleModuleList);
 
             initializeAgent = true;
             YamlParserConfig.setWork(true);

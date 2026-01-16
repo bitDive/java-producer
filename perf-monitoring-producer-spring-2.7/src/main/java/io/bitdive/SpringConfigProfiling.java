@@ -1,7 +1,9 @@
 package io.bitdive;
 
 import io.bitdive.aspect.*;
+import io.bitdive.objectMaperConfig.SpringBeanTypeIndexInitializer;
 import io.bitdive.utilsBean.DumpAllSpringPropertiesRunner;
+import org.springframework.beans.factory.ListableBeanFactory;
 import org.springframework.beans.factory.annotation.Configurable;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.context.annotation.Bean;
@@ -56,6 +58,11 @@ public class SpringConfigProfiling {
     @Bean
     public DumpAllSpringPropertiesRunner dumpAllSpringPropertiesRunner(ConfigurableEnvironment env){
         return new DumpAllSpringPropertiesRunner(env);
+    }
+
+    @Bean
+    public SpringBeanTypeIndexInitializer springBeanTypeIndexInitializer(ListableBeanFactory beanFactory){
+        return new SpringBeanTypeIndexInitializer(beanFactory);
     }
 
 }
