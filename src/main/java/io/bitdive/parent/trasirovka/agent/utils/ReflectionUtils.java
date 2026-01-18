@@ -2,7 +2,6 @@ package io.bitdive.parent.trasirovka.agent.utils;
 
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
-import com.fasterxml.jackson.annotation.PropertyAccessor;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.json.JsonMapper;
@@ -12,7 +11,6 @@ import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.fasterxml.jackson.module.afterburner.AfterburnerModule;
 import com.fasterxml.jackson.databind.jsontype.impl.StdTypeResolverBuilder;
-import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.objectMaperConfig.*;
 import io.bitdive.parent.utils.hibernateConfig.HibernateModuleLoader;
 import lombok.Getter;
@@ -41,6 +39,12 @@ public class ReflectionUtils {
     private static final ObjectMapper SAFE_JSON_PARSER = JsonMapper.builder()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
             .build();
+    
+    /**
+     * Fallback mapper without Afterburner for cases when Afterburner causes IllegalAccessError.
+     * Created lazily when needed.
+     */
+    private static ObjectMapper fallbackMapperWithoutAfterburner;
 
 
     public static void init(List<StdTypeResolverBuilder> builders ,
@@ -89,6 +93,12 @@ public class ReflectionUtils {
         LambdaSerializer.setSerializerModifier(new LambdaSerializerModifier());
         mapper.registerModule(LambdaSerializer);
 
+        // Модификатор для исключения serialVersionUID из сериализации
+        // (предотвращает InaccessibleObjectException в Java 9+ модулях)
+        SimpleModule serialVersionUidExclusion = new SimpleModule();
+        serialVersionUidExclusion.setSerializerModifier(new SerialVersionUidExclusionModifier());
+        mapper.registerModule(serialVersionUidExclusion);
+
         // Модуль для компактной сериализации исключений (Throwable)
         mapper.registerModule(new ThrowableSerializerModule());
 
@@ -133,9 +143,82 @@ public class ReflectionUtils {
             return Optional.ofNullable(paramAfterSeariles)
                     .filter(s -> !s.isEmpty())
                     .filter(s -> !s.equals("null")).orElse("");
+        } catch (Error e) {
+            // Afterburner module may fail with IllegalAccessError when trying to access
+            // fields across class loader boundaries. Fallback to serialization without Afterburner.
+            // Also catch other Error types that might occur during serialization.
+            try {
+                ObjectMapper fallbackMapper = getOrCreateFallbackMapper();
+                String paramAfterSeariles = fallbackMapper.writeValueAsString(obj);
+                return Optional.ofNullable(paramAfterSeariles)
+                        .filter(s -> !s.isEmpty())
+                        .filter(s -> !s.equals("null")).orElse("");
+            } catch (Throwable fallbackException) {
+                // If fallback also fails, return error message
+                String errorMsg = e.getMessage();
+                String fallbackMsg = fallbackException.getMessage();
+                return "[Error: " + (errorMsg != null ? errorMsg : e.getClass().getSimpleName()) + 
+                       " (fallback failed: " + (fallbackMsg != null ? fallbackMsg : fallbackException.getClass().getSimpleName()) + ")]";
+            }
         } catch (Exception e) {
             return "[Error: " + e.getMessage() + "]";
         }
+    }
+
+    /**
+     * Gets or creates a fallback ObjectMapper without Afterburner module for cases when
+     * Afterburner fails due to IllegalAccessError (e.g., class loader issues).
+     * The mapper is cached for reuse.
+     */
+    private static ObjectMapper getOrCreateFallbackMapper() {
+        if (fallbackMapperWithoutAfterburner != null) {
+            return fallbackMapperWithoutAfterburner;
+        }
+        
+        synchronized (ReflectionUtils.class) {
+            if (fallbackMapperWithoutAfterburner != null) {
+                return fallbackMapperWithoutAfterburner;
+            }
+            fallbackMapperWithoutAfterburner = createMapperWithoutAfterburner();
+            return fallbackMapperWithoutAfterburner;
+        }
+    }
+    
+    /**
+     * Creates a fallback ObjectMapper without Afterburner module.
+     */
+    private static ObjectMapper createMapperWithoutAfterburner() {
+        ObjectMapper fallbackMapper = JsonMapper.builder().disable(USE_ANNOTATIONS).build();
+        
+        fallbackMapper.setVisibility(
+                fallbackMapper.getVisibilityChecker()
+                        .withFieldVisibility(JsonAutoDetect.Visibility.ANY)
+                        .withGetterVisibility(JsonAutoDetect.Visibility.NONE)
+                        .withIsGetterVisibility(JsonAutoDetect.Visibility.NONE)
+                        .withSetterVisibility(JsonAutoDetect.Visibility.NONE)
+                        .withCreatorVisibility(JsonAutoDetect.Visibility.ANY)
+        );
+        
+        fallbackMapper.enable(SerializationFeature.WRITE_SELF_REFERENCES_AS_NULL);
+        fallbackMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        fallbackMapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
+        fallbackMapper.registerModule(new JavaTimeModule());
+        fallbackMapper.registerModule(new Jdk8Module());
+        
+        // Copy default typing configuration from main mapper if available
+        if (mapper != null) {
+            try {
+                fallbackMapper.activateDefaultTyping(
+                        LaissezFaireSubTypeValidator.instance,
+                        ObjectMapper.DefaultTyping.NON_FINAL,
+                        JsonTypeInfo.As.PROPERTY
+                );
+            } catch (Exception ignored) {
+                // If default typing setup fails, continue without it
+            }
+        }
+        
+        return fallbackMapper;
     }
 
     /**
