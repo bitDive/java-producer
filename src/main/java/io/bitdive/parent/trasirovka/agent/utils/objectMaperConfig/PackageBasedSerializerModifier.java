@@ -33,12 +33,11 @@ public class PackageBasedSerializerModifier extends BeanSerializerModifier {
             return serializer;
         }
 
-        // ✅ 1) Any ServletRequest/ServletResponse (including Spring Security wrappers) must be excluded
+
         if (isServletRelatedClass(beanClass)) {
             return new ExcludedPackageSerializer();
         }
 
-        // ✅ 2) Exclude by package prefix list
         String packageName = Optional.ofNullable(beanClass.getPackage())
                 .map(Package::getName)
                 .orElse(null);

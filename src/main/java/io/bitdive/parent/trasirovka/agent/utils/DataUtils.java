@@ -16,6 +16,11 @@ public class DataUtils {
             "password", "pass", "secret", "token", "key", "apikey", "auth", "credential"
     ));
 
+    private static final java.util.concurrent.ConcurrentHashMap<Method, String[]> PARAM_NAMES_CACHE =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    private static final BytecodeReadingParanamer PARAMETER = new BytecodeReadingParanamer();
+    private static final String[] EMPTY_NAMES = new String[0];
     /**
      * Fast check if className represents a file-related class.
      * Optimized to reduce string operations.
@@ -70,17 +75,26 @@ public class DataUtils {
     }
 
     public static List<ParamMethodDto> paramConvert(Object[] objects, Method method) {
-        List<String> namesParam = new ArrayList<>();
-        try {
-            BytecodeReadingParanamer paranamer = new BytecodeReadingParanamer();
-            namesParam.addAll(Arrays.asList(paranamer.lookupParameterNames(method)));
-        } catch (Exception e) {
 
+        if (!YamlParserConfig.getProfilingConfig().getMonitoring().getMonitoringArgumentMethod()) {
+            return java.util.Collections.emptyList();
         }
-        if (YamlParserConfig.getProfilingConfig().getMonitoring().getMonitoringArgumentMethod()) {
-            return DataUtils.paramConvertToMess(objects, namesParam);
+
+        if (objects == null || objects.length == 0 || method == null) {
+            return java.util.Collections.emptyList();
         }
-        return new ArrayList<>();
+
+        String[] names = PARAM_NAMES_CACHE.computeIfAbsent(method, m -> {
+            try {
+                return PARAMETER.lookupParameterNames(m, false);
+            } catch (Exception e) {
+                return EMPTY_NAMES;
+            }
+        });
+
+        List<String> namesParam = (names.length == 0) ? java.util.Collections.emptyList() : java.util.Arrays.asList(names);
+
+        return DataUtils.paramConvertToMess(objects, namesParam);
     }
 
 

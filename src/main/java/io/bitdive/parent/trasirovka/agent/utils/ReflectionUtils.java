@@ -15,9 +15,13 @@ import io.bitdive.parent.trasirovka.agent.utils.objectMaperConfig.*;
 import io.bitdive.parent.utils.hibernateConfig.HibernateModuleLoader;
 import lombok.Getter;
 
+import java.awt.*;
+import java.awt.image.BufferedImage;
+import java.awt.image.RenderedImage;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.*;
+import java.util.List;
 
 import static com.fasterxml.jackson.databind.MapperFeature.USE_ANNOTATIONS;
 
@@ -98,6 +102,14 @@ public class ReflectionUtils {
         SimpleModule serialVersionUidExclusion = new SimpleModule();
         serialVersionUidExclusion.setSerializerModifier(new SerialVersionUidExclusionModifier());
         mapper.registerModule(serialVersionUidExclusion);
+
+
+        SimpleModule imageModule = new SimpleModule();
+
+        imageModule.addSerializer(BufferedImage.class, new RenderedImagePlaceholderSerializer());
+        imageModule.addSerializer(RenderedImage.class, new RenderedImagePlaceholderSerializer());
+        imageModule.addSerializer(Image.class, new AwtImagePlaceholderSerializer());
+        mapper.registerModule(imageModule);
 
         // Модуль для компактной сериализации исключений (Throwable)
         mapper.registerModule(new ThrowableSerializerModule());
