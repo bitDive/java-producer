@@ -60,6 +60,10 @@ public class ReflectionUtils {
 
         mapper= JsonMapper.builder().disable(USE_ANNOTATIONS).build();
 
+        AfterburnerModule ab =new AfterburnerModule();
+        ab.setUseValueClassLoader(true);
+        mapper.registerModule(ab);
+
         SpringOptionalSerializers.tryRegisterSpringSortSerializer(mapper);
 
         mapper.setVisibility(
@@ -121,11 +125,6 @@ public class ReflectionUtils {
 
         mapper.registerModule(new JavaTimeModule());
         mapper.registerModule(new Jdk8Module());
-
-        AfterburnerModule ab =new AfterburnerModule();
-
-        ab.setUseValueClassLoader(true);
-        mapper.registerModule(ab);
 
 
         Optional.ofNullable(HibernateModuleLoader.registerHibernateModule())
