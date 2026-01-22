@@ -48,6 +48,13 @@ public class MonitoringFileWriter {
     private static final long POLL_TIMEOUT_MS = 100; // Базовый timeout
     private static final long IDLE_POLL_TIMEOUT_MS = 500; // Увеличенный timeout когда очередь пустая
     
+    // ИСПРАВЛЕНО: Переиспользуемый буфер для архивирования (ThreadLocal для потокобезопасности)
+    // Предотвращает создание нового буфера при каждом архивировании
+    private static final ThreadLocal<byte[]> ARCHIVE_BUFFER = ThreadLocal.withInitial(() -> new byte[BUFFER_SIZE]);
+    
+    // ИСПРАВЛЕНО: Ограничение на очередь архивирования для предотвращения утечки памяти
+    private static final int ARCHIVE_QUEUE_CAPACITY = 10; // Максимум 10 задач архивирования в очереди
+    
     // Потокобезопасный форматтер для даты (вместо SimpleDateFormat)
     private static final DateTimeFormatter TIMESTAMP_FORMATTER = 
         DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss-SSS");
@@ -80,12 +87,20 @@ public class MonitoringFileWriter {
             t.setDaemon(true);
             return t;
         });
-        // Отдельный executor для архивирования (не блокирует основной поток записи)
-        this.archiveExecutor = Executors.newSingleThreadExecutor(r -> {
-            Thread t = new Thread(r, "MonitoringArchive");
-            t.setDaemon(true);
-            return t;
-        });
+        // ИСПРАВЛЕНО: Отдельный executor для архивирования с ограниченной очередью
+        // Предотвращает накопление задач архивирования и утечку памяти
+        // Используем ThreadPoolExecutor с ограниченной очередью вместо SingleThreadExecutor
+        this.archiveExecutor = new ThreadPoolExecutor(
+            1, 1, // Один поток для архивирования
+            0L, TimeUnit.MILLISECONDS,
+            new LinkedBlockingQueue<>(ARCHIVE_QUEUE_CAPACITY), // Ограниченная очередь
+            r -> {
+                Thread t = new Thread(r, "MonitoringArchive");
+                t.setDaemon(true);
+                return t;
+            },
+            new ThreadPoolExecutor.CallerRunsPolicy() // При переполнении выполняем синхронно
+        );
         
         // ВАЖНО: Проверяем наличие старого файла (после аварийного завершения)
         // и архивируем его перед созданием нового
@@ -336,7 +351,8 @@ public class MonitoringFileWriter {
                         // Переименовываем файл (быстрая атомарная операция)
                         Files.move(oldFile, renamedFile);
                         
-                        // Асинхронно архивируем переименованный файл (не блокирует создание нового)
+                        // ИСПРАВЛЕНО: Асинхронно архивируем переименованный файл с защитой от переполнения очереди
+                        // ThreadPoolExecutor с CallerRunsPolicy выполнит синхронно при переполнении очереди
                         final Path fileToArchive = renamedFile;
                         try {
                             archiveExecutor.submit(() -> {
@@ -371,7 +387,7 @@ public class MonitoringFileWriter {
                             });
                         } catch (RejectedExecutionException e) {
                             // ИСПРАВЛЕНО: если executor переполнен или закрыт, архивируем синхронно
-                            // чтобы избежать потери переименованного файла
+                            // Это не должно происходить с CallerRunsPolicy, но оставляем для надежности
                             if (LoggerStatusContent.isErrorsOrDebug()) {
                                 System.err.println("Archive executor rejected task, archiving synchronously: " + e.getMessage());
                             }
@@ -455,14 +471,17 @@ public class MonitoringFileWriter {
             String archiveName = String.format("data-%s-%s.data.gz", timestamp, serviceName);
             Path archivePath = Paths.get(toSendPath, archiveName);
             
-            // Сжимаем файл в gzip с использованием try-with-resources для гарантированного закрытия
+            // ИСПРАВЛЕНО: Сжимаем файл в gzip с переиспользованием буфера
+            // Используем ThreadLocal буфер вместо создания нового при каждом вызове
+            // Это предотвращает утечку памяти при частом архивировании
             try (InputStream in = Files.newInputStream(sourceFile);
                  BufferedOutputStream bufferedOut = new BufferedOutputStream(
                      Files.newOutputStream(archivePath), BUFFER_SIZE);
                  GZIPOutputStream gzipOut = new GZIPOutputStream(bufferedOut)) {
                 
-                // Переиспользуем буфер для минимизации аллокаций (увеличенный размер)
-                byte[] buffer = new byte[BUFFER_SIZE];
+                // ИСПРАВЛЕНО: Переиспользуем ThreadLocal буфер вместо создания нового
+                // Это критично для предотвращения утечки памяти при частом архивировании
+                byte[] buffer = ARCHIVE_BUFFER.get();
                 int len;
                 // ВАЖНО: читаем и записываем только реально прочитанные байты (len)
                 // Это гарантирует, что мы не записываем нулевые байты из неиспользованной части буфера
