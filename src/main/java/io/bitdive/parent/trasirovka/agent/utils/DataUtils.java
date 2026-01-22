@@ -18,14 +18,12 @@ public class DataUtils {
             "password", "pass", "secret", "token", "key", "apikey", "auth", "credential"
     ));
 
-    // Один кеш на Method, внутри: имена + precomputed sensitive флаги
     private static final ConcurrentHashMap<Method, ParamMeta> PARAM_NAMES_CACHE =
             new ConcurrentHashMap<Method, ParamMeta>();
 
     private static final BytecodeReadingParanamer PARAMETER = new BytecodeReadingParanamer();
     private static final String[] EMPTY_NAMES = new String[0];
 
-    // Кеш "простой тип" по классу (ClassValue безопаснее для агентных classloader’ов)
     private static final ClassValue<Boolean> SIMPLE_LIKE_CACHE = new ClassValue<Boolean>() {
         @Override
         protected Boolean computeValue(Class<?> cls) {
@@ -160,9 +158,6 @@ public class DataUtils {
         return null;
     }
 
-    /**
-     * Старый вход (если где-то ещё дергается). Без кеша на Method.
-     */
     public static List<ParamMethodDto> paramConvertToMess(Object[] objects, List<String> namesParam) {
         String[] names = (namesParam == null || namesParam.isEmpty())
                 ? EMPTY_NAMES
