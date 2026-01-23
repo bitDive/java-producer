@@ -12,7 +12,6 @@ import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Optional;
 
-import static io.bitdive.parent.trasirovka.agent.utils.ReflectionUtils.SENSITIVE_KEYWORDS;
 
 
 public class MessageService {
@@ -64,7 +63,7 @@ public class MessageService {
                     String key = URLDecoder.decode(pair.substring(0, idx), StandardCharsets.UTF_8.name());
                     String value = pair.substring(idx + 1);
 
-                    for (String litresMask : SENSITIVE_KEYWORDS) {
+                    for (String litresMask : YamlParserConfig.getProfilingConfig().getMonitoring().getSerialization().getSensitiveKeyWords()) {
                         if (key.toLowerCase().contains(litresMask) || litresMask.toLowerCase().contains(key)) {
                             value = URLEncoder.encode("*****", StandardCharsets.UTF_8.name());
                             break;

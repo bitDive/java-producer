@@ -14,10 +14,6 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class DataUtils {
 
-    public static final Set<String> SENSITIVE_KEYWORDS = new HashSet<String>(Arrays.asList(
-            "password", "pass", "secret", "token", "key", "apikey", "auth", "credential"
-    ));
-
     private static final ConcurrentHashMap<Method, ParamMeta> PARAM_NAMES_CACHE =
             new ConcurrentHashMap<Method, ParamMeta>();
 
@@ -245,13 +241,13 @@ public class DataUtils {
         // 1) точное попадание по токенам (минимум ложных срабатываний)
         String[] tokens = normalized.split("[^a-z0-9]+");
         for (String t : tokens) {
-            if (!t.isEmpty() && SENSITIVE_KEYWORDS.contains(t)) {
+            if (!t.isEmpty() && YamlParserConfig.getProfilingConfig().getMonitoring().getSerialization().getSensitiveKeyWords().contains(t)) {
                 return true;
             }
         }
 
         // 2) подстрока для случаев типа access_token / apiKey / refreshToken
-        for (String kw : SENSITIVE_KEYWORDS) {
+        for (String kw : YamlParserConfig.getProfilingConfig().getMonitoring().getSerialization().getSensitiveKeyWords()) {
             if (kw.length() >= 4 && normalized.contains(kw)) {
                 return true;
             }

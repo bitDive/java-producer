@@ -9,6 +9,8 @@ import org.yaml.snakeyaml.Yaml;
 
 import java.io.InputStream;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.stream.Stream;
 
 public class YamlParserConfig {
@@ -124,6 +126,20 @@ public class YamlParserConfig {
                                         .toArray(String[]::new)
                         );
                     }
+
+                    if (monitoringConfigOverride.getSerialization() != null
+                            && monitoringConfigOverride.getSerialization().getSensitiveKeyWords() != null) {
+
+                        HashSet<String> merged = Stream.concat(
+                                defaultVal.getSerialization() != null && defaultVal.getSerialization().getSensitiveKeyWords() != null
+                                        ? defaultVal.getSerialization().getSensitiveKeyWords().stream()
+                                        : Stream.<String>empty(),
+                                monitoringConfigOverride.getSerialization().getSensitiveKeyWords().stream()
+                        ).collect(java.util.stream.Collectors.toCollection(HashSet::new));
+
+                        defaultVal.getSerialization().setSensitiveKeyWords(merged);
+                    }
+
 
                     if (monitoringConfigOverride.getSerialization().getMaxElementCollection() != null) {
                         defaultVal.getSerialization().setMaxElementCollection(monitoringConfigOverride.getSerialization().getMaxElementCollection());

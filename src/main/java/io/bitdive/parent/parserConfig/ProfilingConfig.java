@@ -75,6 +75,7 @@ public class ProfilingConfig {
         public static class Serialization {
             private String[] excludedPackages;
             private Integer maxElementCollection;
+            private HashSet<String> sensitiveKeyWords;
         }
 
         @Getter
