@@ -104,13 +104,10 @@
                   <include>org.apache.commons:commons-lang3</include>
                   <include>com.thoughtworks.paranamer:paranamer</include>
                   <include>com.github.f4b6a3:uuid-creator</include>
+                  <include>org.jctools:jctools-core</include>
                 </includes>
               </artifactSet>
               <relocations>
-                <relocation>
-                  <pattern>org.apache.logging.log4j</pattern>
-                  <shadedPattern>io.bitdive.shaded.org.apache.logging.log4j</shadedPattern>
-                </relocation>
                 <relocation>
                   <pattern>com.fasterxml.jackson</pattern>
                   <shadedPattern>io.bitdive.shaded.com.fasterxml.jackson</shadedPattern>
@@ -151,9 +148,12 @@
                   <pattern>org.objectweb.asm</pattern>
                   <shadedPattern>io.bitdive.shaded.org.objectweb.asm</shadedPattern>
                 </relocation>
+                <relocation>
+                  <pattern>org.jctools</pattern>
+                  <shadedPattern>io.bitdive.shaded.org.jctools</shadedPattern>
+                </relocation>
               </relocations>
               <transformers>
-                <transformer />
                 <transformer />
                 <transformer>
                   <manifestEntries>
@@ -177,13 +177,6 @@
             </configuration>
           </execution>
         </executions>
-        <dependencies>
-          <dependency>
-            <groupId>org.apache.logging.log4j</groupId>
-            <artifactId>log4j-transform-maven-shade-plugin-extensions</artifactId>
-            <version>0.2.0</version>
-          </dependency>
-        </dependencies>
       </plugin>
     </plugins>
   </build>
