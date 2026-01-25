@@ -2,612 +2,401 @@ package io.bitdive.parent.message_producer;
 
 import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.core.Appender;
+import org.apache.logging.log4j.core.Logger;
+import org.apache.logging.log4j.core.LoggerContext;
+import org.apache.logging.log4j.core.appender.AbstractOutputStreamAppender;
+import org.apache.logging.log4j.core.appender.RollingRandomAccessFileAppender;
+import org.apache.logging.log4j.core.appender.rolling.RollingFileManager;
+import org.apache.logging.log4j.core.config.builder.api.*;
+import org.apache.logging.log4j.core.config.builder.impl.BuiltConfiguration;
+import org.apache.logging.log4j.core.layout.PatternLayout;
 
-import java.io.*;
+import java.io.BufferedOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.concurrent.*;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.zip.GZIPOutputStream;
 
 /**
- * Легковесный асинхронный writer для мониторинговых данных.
- * Полностью независим от Log4j2/Logback - не конфликтует с логированием клиента.
+ * Асинхронный writer мониторинга:
+ * - write() не блокирует (Log4j2 AsyncAppender blocking=false)
+ * - RollingRandomAccessFile + gzip rollover
+ * - Периодическая принудительная ротация по таймеру (без записи "пустых" строк)
+ * - Изоляция от логов приложения достигается shading+relocation Log4j2.
  */
 public class MonitoringFileWriter {
-    
+
+    // ==== Твои дефолты/константы ====
+    private static final int ASYNC_BUFFER_SIZE = 10_000;             // аналог QUEUE_CAPACITY
+    private static final int FILE_BUFFER_SIZE = 16_384;              // аналог BUFFER_SIZE
+    private static final long MAX_FILE_SIZE_BYTES = 100L * 1024 * 1024; // 100 MB
+    private static final String ACTIVE_FILE_NAME = "monitoringFile.data";
+
+    private static final DateTimeFormatter TS = DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss-SSS");
+
+    // Чтобы не аллоцировать буфер на каждый startup-архив
+    private static final ThreadLocal<byte[]> STARTUP_ARCHIVE_BUFFER =
+            ThreadLocal.withInitial(() -> new byte[FILE_BUFFER_SIZE]);
+
+    // ==== Имена log4j2 компонентов (внутренние) ====
+    private static final String CTX_NAME = "BitDiveMonitoringCtx";
+    private static final String LOG_NAME = "BitDiveMonitoringLogger";
+    private static final String ROLLING_APPENDER = "BitDiveRollingRAFile";
+    private static final String ASYNC_APPENDER = "BitDiveAsync";
+
     private final String baseFilePath;
     private final String toSendPath;
     private final String serviceName;
-    private final long maxFileSizeBytes;
 
-    private volatile Path currentFile;
-    private volatile OutputStream currentOutputStream;
-    private final AtomicLong currentFileSize = new AtomicLong(0);
-    private final AtomicBoolean isRunning = new AtomicBoolean(true);
-    
-    // Асинхронная очередь для записи
-    private final BlockingQueue<String> writeQueue;
-    private final ExecutorService writerExecutor;
-    private final ScheduledExecutorService rotationScheduler;
-    private final ExecutorService archiveExecutor; // Отдельный executor для архивирования
-    
-    private static final int QUEUE_CAPACITY = 10000;
-    private static final long MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024; // 100 MB
-    
-    // Константы для оптимизации (избегаем создания объектов)
-    private static final byte[] NEWLINE_BYTES = "\n".getBytes(java.nio.charset.StandardCharsets.UTF_8);
-    private static final int FLUSH_THRESHOLD = 10; // Flush каждые 10 сообщений (гарантия записи на диск)
-    private static final int BATCH_SIZE = 50; // Обрабатываем до 50 сообщений за раз
-    private static final int BUFFER_SIZE = 16384; // Увеличенный буфер (16KB вместо 8KB)
-    private static final long POLL_TIMEOUT_MS = 100; // Базовый timeout
-    private static final long IDLE_POLL_TIMEOUT_MS = 500; // Увеличенный timeout когда очередь пустая
-    
-    // ИСПРАВЛЕНО: Переиспользуемый буфер для архивирования (ThreadLocal для потокобезопасности)
-    // Предотвращает создание нового буфера при каждом архивировании
-    private static final ThreadLocal<byte[]> ARCHIVE_BUFFER = ThreadLocal.withInitial(() -> new byte[BUFFER_SIZE]);
-    
-    // ИСПРАВЛЕНО: Ограничение на очередь архивирования для предотвращения утечки памяти
-    private static final int ARCHIVE_QUEUE_CAPACITY = 10; // Максимум 10 задач архивирования в очереди
-    
-    // Потокобезопасный форматтер для даты (вместо SimpleDateFormat)
-    private static final DateTimeFormatter TIMESTAMP_FORMATTER = 
-        DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss-SSS");
-    private int messagesSinceFlush = 0;
-    private volatile boolean queueWasEmpty = true; // Флаг для адаптивного timeout
-    
+    private final long maxFileSizeBytes;
+    private final int rotationIntervalSeconds;
+
+    private final AtomicBoolean running = new AtomicBoolean(true);
+
+    private LoggerContext ctx;
+    private Logger logger;
+    private ScheduledExecutorService rotationScheduler;
+
+    // reflection: AbstractOutputStreamAppender#getManager() (protected)
+    private static final Method GET_MANAGER_METHOD = initGetManagerMethod();
+
     public MonitoringFileWriter() throws IOException {
         this.baseFilePath = YamlParserConfig.getProfilingConfig().getMonitoring().getDataFile().getPath();
-        this.toSendPath = baseFilePath + File.separator + "toSend";
+        this.toSendPath = baseFilePath + java.io.File.separator + "toSend";
         this.serviceName = YamlParserConfig.getProfilingConfig().getApplication().getServiceName();
+
         this.maxFileSizeBytes = MAX_FILE_SIZE_BYTES;
-        int rotationIntervalSeconds = YamlParserConfig.getProfilingConfig()
+        this.rotationIntervalSeconds = YamlParserConfig.getProfilingConfig()
                 .getMonitoring()
                 .getDataFile()
                 .getTimerConvertForSend();
-        
-        // Создаем директории если не существуют
+
         Files.createDirectories(Paths.get(baseFilePath));
         Files.createDirectories(Paths.get(toSendPath));
-        
-        // Инициализируем очередь и executor'ы
-        this.writeQueue = new LinkedBlockingQueue<>(QUEUE_CAPACITY);
-        this.writerExecutor = Executors.newSingleThreadExecutor(r -> {
-            Thread t = new Thread(r, "MonitoringWriter");
-            t.setDaemon(true);
-            return t;
-        });
-        this.rotationScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "MonitoringRotation");
-            t.setDaemon(true);
-            return t;
-        });
-        // ИСПРАВЛЕНО: Отдельный executor для архивирования с ограниченной очередью
-        // Предотвращает накопление задач архивирования и утечку памяти
-        // Используем ThreadPoolExecutor с ограниченной очередью вместо SingleThreadExecutor
-        this.archiveExecutor = new ThreadPoolExecutor(
-            1, 1, // Один поток для архивирования
-            0L, TimeUnit.MILLISECONDS,
-            new LinkedBlockingQueue<>(ARCHIVE_QUEUE_CAPACITY), // Ограниченная очередь
-            r -> {
-                Thread t = new Thread(r, "MonitoringArchive");
-                t.setDaemon(true);
-                return t;
-            },
-            new ThreadPoolExecutor.CallerRunsPolicy() // При переполнении выполняем синхронно
-        );
-        
-        // ВАЖНО: Проверяем наличие старого файла (после аварийного завершения)
-        // и архивируем его перед созданием нового
-        Path existingFile = Paths.get(baseFilePath, "monitoringFile.data");
-        if (Files.exists(existingFile) && Files.size(existingFile) > 0) {
-            archiveFile(existingFile);
+
+        // 1) Если остался старый active-файл после крэша — архивируем его как раньше
+        Path existingActive = Paths.get(baseFilePath, ACTIVE_FILE_NAME);
+        if (Files.exists(existingActive) && Files.size(existingActive) > 0) {
+            archiveStandalone(existingActive);
+            tryDelete(existingActive);
             if (LoggerStatusContent.isDebug()) {
-                System.out.println("Archived existing monitoring file from previous session");
+                System.out.println("Archived existing monitoring file from previous session: " + existingActive);
             }
         }
-        
-        // Создаем начальный файл
-        rotateFile();
-        
-        // Запускаем writer поток
-        writerExecutor.submit(this::writerLoop);
-        
-        // Запускаем периодическую ротацию по расписанию (cron-like)
-        rotationScheduler.scheduleAtFixedRate(
-            this::rotateFileIfNeeded,
+
+        // 2) Стартуем изолированный Log4j2 контекст с Rolling + Async
+        startIsolatedLog4j2();
+
+        // 3) Периодическая принудительная ротация по таймеру (как у тебя было)
+        //    Важно: без "пустых лог-строк" — вызываем manager.rollover()
+        this.rotationScheduler = Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("MonitoringRotation"));
+        this.rotationScheduler.scheduleAtFixedRate(
+                this::rolloverOnSchedule,
                 rotationIntervalSeconds,
                 rotationIntervalSeconds,
-            TimeUnit.SECONDS
+                TimeUnit.SECONDS
         );
     }
-    
+
     /**
-     * Асинхронная запись сообщения. Не блокирует вызывающий поток.
+     * Не блокирующая запись:
+     * - sanitization \u0000
+     * - дальше AsyncAppender (blocking=false)
      */
     public void write(String message) {
-        if (!isRunning.get()) {
-            return;
-        }
-        
-        // Если очередь полная - пропускаем сообщение (не блокируем)
-        boolean offered = writeQueue.offer(message);
-        if (!offered && LoggerStatusContent.isDebug()) {
-            System.err.println("MonitoringFileWriter: Queue is full, message dropped");
-        }
-    }
-    
-    /**
-     * Основной цикл записи из очереди в файл
-     * ОПТИМИЗИРОВАНО: batch обработка сообщений и адаптивный timeout для снижения нагрузки на CPU
-     * ИСПРАВЛЕНО: переиспользование batch списка для предотвращения лишних аллокаций
-     */
-    private void writerLoop() {
-        // ИСПРАВЛЕНО: создаем список один раз и переиспользуем для снижения аллокаций
-        final java.util.List<String> batch = new java.util.ArrayList<>(BATCH_SIZE);
-        
-        while (isRunning.get() || !writeQueue.isEmpty()) {
-            try {
-                // Адаптивный timeout: больше когда очередь пустая (меньше опросов CPU)
-                long timeout = queueWasEmpty ? IDLE_POLL_TIMEOUT_MS : POLL_TIMEOUT_MS;
-                
-                // Собираем batch сообщений для обработки
-                batch.clear();
-                String firstMessage = writeQueue.poll(timeout, TimeUnit.MILLISECONDS);
-                
-                if (firstMessage != null) {
-                    batch.add(firstMessage);
-                    queueWasEmpty = false;
-                    
-                    // Собираем дополнительные сообщения без блокировки (drain)
-                    writeQueue.drainTo(batch, BATCH_SIZE - 1);
-                    
-                    // Записываем все сообщения из batch
-                    for (String message : batch) {
-                        try {
-                            writeToFile(message);
-                        } catch (Exception e) {
-                            if (LoggerStatusContent.isErrorsOrDebug()) {
-                                System.err.println("Error writing message to file: " + e.getMessage());
-                            }
-                        }
-                    }
-                    
-                    // ВАЖНО: Принудительный flush после обработки batch для гарантии записи
-                    // Это особенно важно при малом количестве сообщений
-                    try {
-                        if (currentOutputStream != null) {
-                            currentOutputStream.flush();
-                        }
-                    } catch (IOException e) {
-                        if (LoggerStatusContent.isErrorsOrDebug()) {
-                            System.err.println("Error flushing after batch: " + e.getMessage());
-                        }
-                    }
-                } else {
-                    queueWasEmpty = true;
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
-            } catch (Exception e) {
-                if (LoggerStatusContent.isErrorsOrDebug()) {
-                    System.err.println("Error in writer loop: " + e.getMessage());
-                }
-            }
-        }
-    }
-    
-    /**
-     * Запись в текущий файл с проверкой размера
-     * ОПТИМИЗИРОВАНО: минимум создания объектов, редкий flush
-     * ИСПРАВЛЕНО: фильтрация null байтов для предотвращения ошибок парсинга JSON
-     * ИСПРАВЛЕНО: принудительный flush для пустых сообщений и периодический flush
-     */
-    private void writeToFile(String message) throws IOException {
-        if (currentOutputStream == null) {
-            rotateFile();
-        }
-        
-        // Валидация и очистка сообщения от null байтов и недопустимых символов
-        if (message == null) {
-            message = "";
-        }
-        
-        // Используем UTF-8 явно для производительности
-        byte[] messageBytes = message.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        
-        // Фильтруем null байты (\x00) которые могут вызвать ошибки при парсинге JSON
-        // Это важно для предотвращения ошибки "invalid character '\x00'"
-        messageBytes = filterNullBytes(messageBytes);
-        
-        // Пропускаем запись если сообщение полностью пустое после фильтрации
-        if (messageBytes.length == 0 && message.isEmpty()) {
-            return;
-        }
-        
-        // Записываем сообщение
-        currentOutputStream.write(messageBytes);
-        // Добавляем перевод строки (переиспользуем константу)
-        currentOutputStream.write(NEWLINE_BYTES);
-        
-        // Обновляем размер
-        long totalBytes = messageBytes.length + NEWLINE_BYTES.length;
-        long newSize = currentFileSize.addAndGet(totalBytes);
-        
-        // ВАЖНО: Flush периодически для производительности и гарантии записи
-        // Flush каждые FLUSH_THRESHOLD сообщений для гарантии записи на диск
-        messagesSinceFlush++;
-        if (messagesSinceFlush >= FLUSH_THRESHOLD) {
-            currentOutputStream.flush();
-            messagesSinceFlush = 0;
-        }
-        
-        // Проверяем размер файла
-        if (newSize >= maxFileSizeBytes) {
-            rotateFile();
-        }
-    }
-    
-    /**
-     * Фильтрация null байтов из массива байтов
-     * Предотвращает ошибки парсинга JSON на стороне сервера
-     */
-    private byte[] filterNullBytes(byte[] bytes) {
-        if (bytes == null || bytes.length == 0) {
-            return bytes;
-        }
-        
-        // Подсчитываем количество null байтов
-        int nullCount = 0;
-        for (byte b : bytes) {
-            if (b == 0) {
-                nullCount++;
-            }
-        }
-        
-        // Если null байтов нет - возвращаем исходный массив
-        if (nullCount == 0) {
-            return bytes;
-        }
-        
-        // Создаем новый массив без null байтов
-        byte[] filtered = new byte[bytes.length - nullCount];
-        int index = 0;
-        for (byte b : bytes) {
-            if (b != 0) {
-                filtered[index++] = b;
-            }
-        }
-        
-        return filtered;
-    }
-    
-    /**
-     * Ротация файла по расписанию
-     */
-    private void rotateFileIfNeeded() {
+        if (!running.get()) return;
+
+        String sanitized = sanitizeMessage(message);
+        if (sanitized == null || sanitized.isEmpty()) return;
+
         try {
-            // Flush перед ротацией для сохранности данных
-            if (currentOutputStream != null && currentFileSize.get() > 0) {
-                currentOutputStream.flush();
-                rotateFile();
-            }
-        } catch (Exception e) {
+            // ВАЖНО: logger привязан к нашему LoggerContext, не к глобальному LogManager приложения.
+            logger.info(sanitized);
+        } catch (Throwable t) {
+            // Никогда не валим основное приложение из-за логгера агента
             if (LoggerStatusContent.isErrorsOrDebug()) {
-                System.err.println("Error during scheduled file rotation: " + e.getMessage());
+                System.err.println("MonitoringFileWriter: write failed: " + t.getMessage());
             }
         }
     }
-    
+
     /**
-     * Ротация: закрываем текущий файл, переименовываем его и создаем новый
-     * ОПТИМИЗИРОВАНО: переименование вместо синхронного архивирования для снижения блокировок
-     */
-    private synchronized void rotateFile() throws IOException {
-        // Сохраняем ссылки для архивирования
-        OutputStream oldStream = currentOutputStream;
-        Path oldFile = currentFile;
-        // Сохраняем размер файла ДО сброса счетчика
-        long oldFileSize = currentFileSize.get();
-        
-        // Закрываем старый поток с гарантированным закрытием
-        if (oldStream != null) {
-            try {
-                oldStream.flush();
-            } catch (IOException e) {
-                if (LoggerStatusContent.isErrorsOrDebug()) {
-                    System.err.println("Error flushing current file: " + e.getMessage());
-                }
-            } finally {
-                try {
-                    oldStream.close();
-                } catch (IOException e) {
-                    if (LoggerStatusContent.isErrorsOrDebug()) {
-                        System.err.println("Error closing current file: " + e.getMessage());
-                    }
-                }
-            }
-        }
-        
-        // Переименовываем файл для последующего асинхронного архивирования
-        // Это позволяет быстро создать новый файл без блокировки на архивирование
-        Path renamedFile = null;
-        if (oldFile != null && oldFileSize > 0) {
-            try {
-                if (Files.exists(oldFile)) {
-                    long actualFileSize = Files.size(oldFile);
-                    if (actualFileSize > 0) {
-                        // Создаем уникальное имя для переименованного файла
-                        String timestamp = LocalDateTime.now().format(TIMESTAMP_FORMATTER);
-                        String renamedFileName = String.format("monitoringFile-%s.data", timestamp);
-                        renamedFile = Paths.get(baseFilePath, renamedFileName);
-                        
-                        // Переименовываем файл (быстрая атомарная операция)
-                        Files.move(oldFile, renamedFile);
-                        
-                        // ИСПРАВЛЕНО: Асинхронно архивируем переименованный файл с защитой от переполнения очереди
-                        // ThreadPoolExecutor с CallerRunsPolicy выполнит синхронно при переполнении очереди
-                        final Path fileToArchive = renamedFile;
-                        try {
-                            archiveExecutor.submit(() -> {
-                                try {
-                                    if (LoggerStatusContent.isDebug()) {
-                                        System.out.println("Starting async archiving of: " + fileToArchive.getFileName());
-                                    }
-                                    archiveFile(fileToArchive);
-                                    // Удаляем переименованный файл после успешного архивирования
-                                    Files.deleteIfExists(fileToArchive);
-                                    if (LoggerStatusContent.isDebug()) {
-                                        System.out.println("Completed archiving and deleted temp file: " + fileToArchive.getFileName());
-                                    }
-                                } catch (Exception e) {
-                                    if (LoggerStatusContent.isErrorsOrDebug()) {
-                                        System.err.println("Error in async archiving: " + e.getMessage());
-                                        e.printStackTrace();
-                                    }
-                                    // ИСПРАВЛЕНО: предотвращение утечки памяти - удаляем файл даже при ошибке архивирования
-                                    // чтобы избежать накопления переименованных файлов
-                                    try {
-                                        Files.deleteIfExists(fileToArchive);
-                                        if (LoggerStatusContent.isDebug()) {
-                                            System.out.println("Deleted temp file after archiving error: " + fileToArchive.getFileName());
-                                        }
-                                    } catch (IOException deleteEx) {
-                                        if (LoggerStatusContent.isErrorsOrDebug()) {
-                                            System.err.println("Failed to delete temp file after archiving error: " + deleteEx.getMessage());
-                                        }
-                                    }
-                                }
-                            });
-                        } catch (RejectedExecutionException e) {
-                            // ИСПРАВЛЕНО: если executor переполнен или закрыт, архивируем синхронно
-                            // Это не должно происходить с CallerRunsPolicy, но оставляем для надежности
-                            if (LoggerStatusContent.isErrorsOrDebug()) {
-                                System.err.println("Archive executor rejected task, archiving synchronously: " + e.getMessage());
-                            }
-                            try {
-                                archiveFile(fileToArchive);
-                                Files.deleteIfExists(fileToArchive);
-                            } catch (Exception archiveEx) {
-                                if (LoggerStatusContent.isErrorsOrDebug()) {
-                                    System.err.println("Error in synchronous archiving: " + archiveEx.getMessage());
-                                }
-                                // Удаляем файл даже при ошибке
-                                try {
-                                    Files.deleteIfExists(fileToArchive);
-                                } catch (IOException deleteEx) {
-                                    if (LoggerStatusContent.isErrorsOrDebug()) {
-                                        System.err.println("Failed to delete temp file: " + deleteEx.getMessage());
-                                    }
-                                }
-                            }
-                        }
-                    } else if (LoggerStatusContent.isDebug()) {
-                        System.out.println("Skipping rotation of empty file: " + oldFile);
-                        // Удаляем пустой файл
-                        Files.deleteIfExists(oldFile);
-                    }
-                }
-            } catch (Exception e) {
-                if (LoggerStatusContent.isErrorsOrDebug()) {
-                    System.err.println("Error renaming file during rotation: " + e.getMessage());
-                }
-            }
-        }
-        
-        // Создаем новый файл сразу (не ждем архивирования)
-        try {
-            currentFile = Paths.get(baseFilePath, "monitoringFile.data");
-            currentOutputStream = new BufferedOutputStream(
-                Files.newOutputStream(currentFile, 
-                    StandardOpenOption.CREATE, 
-                    StandardOpenOption.TRUNCATE_EXISTING,
-                    StandardOpenOption.WRITE),
-                BUFFER_SIZE // Увеличенный буфер для снижения системных вызовов
-            );
-            currentFileSize.set(0);
-            messagesSinceFlush = 0; // Сбрасываем счётчик
-        } catch (IOException e) {
-            // Если не удалось создать новый файл, сбрасываем ссылку
-            currentOutputStream = null;
-            currentFile = null;
-            throw e;
-        }
-    }
-    
-    /**
-     * Архивирование файла в gzip
-     * ОПТИМИЗИРОВАНО: использует потокобезопасный DateTimeFormatter вместо SimpleDateFormat
-     * ИСПРАВЛЕНО: гарантирует запись только реально прочитанных байтов (без null байтов из буфера)
-     * ИСПРАВЛЕНО: проверка размера файла и валидация перед архивированием
-     */
-    private void archiveFile(Path sourceFile) {
-        try {
-            // Проверяем, что файл существует и не пустой
-            if (!Files.exists(sourceFile)) {
-                if (LoggerStatusContent.isDebug()) {
-                    System.out.println("File does not exist for archiving: " + sourceFile);
-                }
-                return;
-            }
-            
-            long fileSize = Files.size(sourceFile);
-            if (fileSize == 0) {
-                if (LoggerStatusContent.isDebug()) {
-                    System.out.println("Skipping archiving of empty file: " + sourceFile);
-                }
-                return;
-            }
-            
-            // Используем потокобезопасный форматтер (переиспользуем константу)
-            // Добавлены миллисекунды для избежания конфликтов имен при быстрой ротации
-            String timestamp = LocalDateTime.now().format(TIMESTAMP_FORMATTER);
-            String archiveName = String.format("data-%s-%s.data.gz", timestamp, serviceName);
-            Path archivePath = Paths.get(toSendPath, archiveName);
-            
-            // ИСПРАВЛЕНО: Сжимаем файл в gzip с переиспользованием буфера
-            // Используем ThreadLocal буфер вместо создания нового при каждом вызове
-            // Это предотвращает утечку памяти при частом архивировании
-            try (InputStream in = Files.newInputStream(sourceFile);
-                 BufferedOutputStream bufferedOut = new BufferedOutputStream(
-                     Files.newOutputStream(archivePath), BUFFER_SIZE);
-                 GZIPOutputStream gzipOut = new GZIPOutputStream(bufferedOut)) {
-                
-                // ИСПРАВЛЕНО: Переиспользуем ThreadLocal буфер вместо создания нового
-                // Это критично для предотвращения утечки памяти при частом архивировании
-                byte[] buffer = ARCHIVE_BUFFER.get();
-                int len;
-                // ВАЖНО: читаем и записываем только реально прочитанные байты (len)
-                // Это гарантирует, что мы не записываем нулевые байты из неиспользованной части буфера
-                while ((len = in.read(buffer)) != -1) {
-                    if (len > 0) {
-                        // Записываем только прочитанные байты, не весь буфер
-                        gzipOut.write(buffer, 0, len);
-                    }
-                }
-                // Явный flush для гарантии записи всех данных
-                gzipOut.finish();
-                // Финальный flush буфера для гарантии записи на диск
-                bufferedOut.flush();
-            }
-            
-            // Проверяем, что архив был создан и не пустой
-            // ВАЖНО: Потоки уже закрыты в try-with-resources, данные должны быть на диске
-            if (Files.exists(archivePath)) {
-                long archiveSize = Files.size(archivePath);
-                if (archiveSize > 0) {
-                    if (LoggerStatusContent.isDebug()) {
-                        System.out.println("Archived monitoring file: " + archiveName + 
-                            " (source: " + fileSize + " bytes, archive: " + archiveSize + " bytes, path: " + archivePath + ")");
-                    }
-                } else {
-                    if (LoggerStatusContent.isErrorsOrDebug()) {
-                        System.err.println("Warning: Created empty archive file: " + archiveName);
-                    }
-                    // Удаляем пустой архив
-                    Files.deleteIfExists(archivePath);
-                }
-            } else {
-                if (LoggerStatusContent.isErrorsOrDebug()) {
-                    System.err.println("Error: Archive file was not created: " + archiveName + " in directory: " + toSendPath);
-                }
-            }
-            
-        } catch (IOException e) {
-            if (LoggerStatusContent.isErrorsOrDebug()) {
-                System.err.println("Error archiving file " + sourceFile + ": " + e.getMessage());
-                e.printStackTrace();
-            }
-        }
-    }
-    
-    /**
-     * Корректная остановка writer'а с дожиданием записи всех сообщений
+     * Корректная остановка.
      */
     public void shutdown() {
-        isRunning.set(false);
-        
-        // Останавливаем ротацию
-        rotationScheduler.shutdown();
-        try {
-            if (!rotationScheduler.awaitTermination(5, TimeUnit.SECONDS)) {
-                rotationScheduler.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            rotationScheduler.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
-        
-        // Ждем завершения записи всех сообщений
-        writerExecutor.shutdown();
-        try {
-            if (!writerExecutor.awaitTermination(30, TimeUnit.SECONDS)) {
-                if (LoggerStatusContent.isDebug()) {
-                    System.out.println("Writer did not finish in time, forcing shutdown...");
-                }
-                writerExecutor.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            writerExecutor.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
-        
-        // Останавливаем executor архивирования
-        archiveExecutor.shutdown();
-        try {
-            if (!archiveExecutor.awaitTermination(10, TimeUnit.SECONDS)) {
-                archiveExecutor.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            archiveExecutor.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
-        
-        // Закрываем текущий файл с гарантированным закрытием
-        if (currentOutputStream != null) {
-            OutputStream streamToClose = currentOutputStream;
-            Path fileToArchive = currentFile;
-            
+        if (!running.compareAndSet(true, false)) return;
+
+        // останавливаем scheduler
+        if (rotationScheduler != null) {
+            rotationScheduler.shutdown();
             try {
-                streamToClose.flush();
-            } catch (IOException e) {
-                if (LoggerStatusContent.isErrorsOrDebug()) {
-                    System.err.println("Error flushing file on shutdown: " + e.getMessage());
+                if (!rotationScheduler.awaitTermination(5, TimeUnit.SECONDS)) {
+                    rotationScheduler.shutdownNow();
                 }
-            } finally {
-                try {
-                    streamToClose.close();
-                } catch (IOException e) {
-                    if (LoggerStatusContent.isErrorsOrDebug()) {
-                        System.err.println("Error closing file on shutdown: " + e.getMessage());
-                    }
-                }
-            }
-            
-            // Архивируем последний файл если он не пустой (после закрытия потока)
-            // Используем синхронное архивирование при shutdown для гарантии завершения
-            if (fileToArchive != null) {
-                try {
-                    if (Files.exists(fileToArchive) && Files.size(fileToArchive) > 0) {
-                        archiveFile(fileToArchive);
-                    }
-                } catch (IOException e) {
-                    if (LoggerStatusContent.isErrorsOrDebug()) {
-                        System.err.println("Error archiving file on shutdown: " + e.getMessage());
-                    }
-                }
+            } catch (InterruptedException e) {
+                rotationScheduler.shutdownNow();
+                Thread.currentThread().interrupt();
             }
         }
-        
+
+        // финальная принудительная ротация, если файл не пуст
+        try {
+            rolloverNowIfNotEmpty();
+        } catch (Throwable ignored) { }
+
+        // стопаем контекст (flush/stop async thread/appender-ы)
+        if (ctx != null) {
+            try {
+                ctx.stop(10, TimeUnit.SECONDS);
+            } catch (Throwable t) {
+                try { ctx.stop(); } catch (Throwable ignored) { }
+            }
+        }
+
         if (LoggerStatusContent.isDebug()) {
             System.out.println("MonitoringFileWriter shutdown complete");
         }
     }
-}
 
+    // =========================================================================================
+    // Log4j2 isolated configuration
+    // =========================================================================================
+
+    private void startIsolatedLog4j2() {
+        ConfigurationBuilder<BuiltConfiguration> b = ConfigurationBuilderFactory.newConfigurationBuilder();
+
+        // Чтобы Log4j2 не шумел в stdout/stderr
+        b.setStatusLevel(Level.ERROR);
+        b.setConfigurationName("BitDiveMonitoringConfig");
+
+        // properties
+        b.addProperty("baseDir", baseFilePath);
+        b.addProperty("toSendDir", toSendPath);
+        b.addProperty("serviceName", serviceName);
+
+        // Layout: только сообщение + \n (как у тебя NEWLINE_BYTES)
+        LayoutComponentBuilder layout = b.newLayout("PatternLayout")
+                .addAttribute("pattern", "%m%n")
+                .addAttribute("charset", StandardCharsets.UTF_8);
+
+        // RollingRandomAccessFileAppender -> active file
+        String activeFile = Paths.get(baseFilePath, ACTIVE_FILE_NAME).toString();
+
+        // Роллы уходят в toSend как gzip
+        // %i добавлен для коллизий
+        String filePattern = Paths.get(
+                toSendPath,
+                "data-%d{yyyy-MM-dd-HH-mm-ss-SSS}-${serviceName}-%i.data.gz"
+        ).toString();
+
+        ComponentBuilder<?> policies = b.newComponent("Policies")
+                .addComponent(b.newComponent("SizeBasedTriggeringPolicy")
+                        .addAttribute("size", toLog4jSize(maxFileSizeBytes)));
+
+        // strategy: не ограничиваем количество, потому что отправляющая часть сама чистит toSend
+        ComponentBuilder<?> strategy = b.newComponent("DefaultRolloverStrategy")
+                .addAttribute("fileIndex", "nomax");
+
+        AppenderComponentBuilder rolling = b.newAppender(ROLLING_APPENDER, "RollingRandomAccessFile")
+                .addAttribute("fileName", activeFile)
+                .addAttribute("filePattern", filePattern)
+                .addAttribute("append", true)
+                .addAttribute("immediateFlush", false)
+                .addAttribute("bufferSize", FILE_BUFFER_SIZE)
+                .add(layout)
+                .addComponent(policies)
+                .addComponent(strategy);
+
+        b.add(rolling);
+
+        // Async appender (не блокирует, если очередь полная — дроп)
+        AppenderComponentBuilder async = b.newAppender(ASYNC_APPENDER, "Async")
+                .addAttribute("bufferSize", ASYNC_BUFFER_SIZE)
+                .addAttribute("blocking", false)
+                .addAttribute("includeLocation", false)
+                .addComponent(b.newAppenderRef(ROLLING_APPENDER));
+
+        b.add(async);
+
+        // Logger только для агента
+        LoggerComponentBuilder agentLogger = b.newLogger(LOG_NAME, Level.INFO)
+                .add(b.newAppenderRef(ASYNC_APPENDER))
+                .addAttribute("additivity", false);
+
+        b.add(agentLogger);
+
+        // Root минимальный (чтобы случайно не писать в наши аппендеры)
+        b.add(b.newRootLogger(Level.OFF));
+
+        BuiltConfiguration cfg = b.build();
+
+        this.ctx = new LoggerContext(CTX_NAME);
+        this.ctx.start(cfg);
+        this.logger = this.ctx.getLogger(LOG_NAME);
+
+        if (LoggerStatusContent.isDebug()) {
+            System.out.println("MonitoringFileWriter: Log4j2 context started. Active file: " + activeFile);
+        }
+    }
+
+    private static String toLog4jSize(long bytes) {
+        // log4j2 size syntax: "100MB", "10MB", etc.
+        // Для твоего дефолта 100MB просто вернем 100MB.
+        long mb = bytes / (1024L * 1024L);
+        if (mb > 0 && mb * 1024L * 1024L == bytes) {
+            return mb + "MB";
+        }
+        long kb = bytes / 1024L;
+        if (kb > 0 && kb * 1024L == bytes) {
+            return kb + "KB";
+        }
+        return bytes + "B";
+    }
+
+    // =========================================================================================
+    // Scheduled rollover (preserves your "rotate even when idle" behavior)
+    // =========================================================================================
+
+    private void rolloverOnSchedule() {
+        if (!running.get()) return;
+        try {
+            rolloverNowIfNotEmpty();
+        } catch (Throwable t) {
+            if (LoggerStatusContent.isErrorsOrDebug()) {
+                System.err.println("MonitoringFileWriter: scheduled rollover failed: " + t.getMessage());
+            }
+        }
+    }
+
+    private void rolloverNowIfNotEmpty() throws Exception {
+        RollingFileManager mgr = getRollingManager();
+        if (mgr == null) return;
+
+        long size = mgr.getFileSize();
+        if (size <= 0) return;
+
+        // как у тебя: flush перед ротацией
+        try { mgr.flush(); } catch (Throwable ignored) { }
+
+        // важное: принудительная ротация без записи "пустой строки"
+        mgr.rollover();
+    }
+
+    private RollingFileManager getRollingManager() throws Exception {
+        if (ctx == null) return null;
+
+        Appender a = ctx.getConfiguration().getAppender(ROLLING_APPENDER);
+        if (!(a instanceof RollingRandomAccessFileAppender)) return null;
+
+        Object manager = GET_MANAGER_METHOD.invoke(a);
+        if (manager instanceof RollingFileManager) {
+            return (RollingFileManager) manager;
+        }
+        return null;
+    }
+
+    private static Method initGetManagerMethod() {
+        try {
+            Method m = AbstractOutputStreamAppender.class.getDeclaredMethod("getManager");
+            m.setAccessible(true);
+            return m;
+        } catch (Exception e) {
+            // Если вдруг log4j2 поменяет API — просто не будем делать принудительный rollover
+            // (но запись продолжит работать).
+            throw new IllegalStateException("Cannot access Log4j2 appender manager (getManager).", e);
+        }
+    }
+
+    // =========================================================================================
+    // Message sanitization (\u0000 filtering)
+    // =========================================================================================
+
+    private static String sanitizeMessage(String message) {
+        if (message == null) return null;
+
+        int idx = message.indexOf('\0');
+        if (idx < 0) return message;
+
+        // удаляем все \u0000
+        StringBuilder sb = new StringBuilder(message.length());
+        for (int i = 0; i < message.length(); i++) {
+            char c = message.charAt(i);
+            if (c != 0) sb.append(c);
+        }
+        return sb.toString();
+    }
+
+    // =========================================================================================
+    // Startup archiving (preserves your previous-session behavior)
+    // =========================================================================================
+
+    private void archiveStandalone(Path sourceFile) {
+        try {
+            if (!Files.exists(sourceFile)) return;
+            long fileSize = Files.size(sourceFile);
+            if (fileSize <= 0) return;
+
+            String timestamp = LocalDateTime.now().format(TS);
+            String archiveName = String.format("data-%s-%s-0.data.gz", timestamp, serviceName);
+            Path archivePath = Paths.get(toSendPath, archiveName);
+
+            try (InputStream in = Files.newInputStream(sourceFile);
+                 BufferedOutputStream bos = new BufferedOutputStream(Files.newOutputStream(archivePath), FILE_BUFFER_SIZE);
+                 GZIPOutputStream gzip = new GZIPOutputStream(bos)) {
+
+                byte[] buf = STARTUP_ARCHIVE_BUFFER.get();
+                int len;
+                while ((len = in.read(buf)) != -1) {
+                    if (len > 0) gzip.write(buf, 0, len);
+                }
+                gzip.finish();
+                bos.flush();
+            }
+
+            if (LoggerStatusContent.isDebug()) {
+                long gzSize = Files.exists(archivePath) ? Files.size(archivePath) : -1;
+                System.out.println("Startup archive created: " + archivePath + " (src=" + fileSize + ", gz=" + gzSize + ")");
+            }
+        } catch (Throwable t) {
+            if (LoggerStatusContent.isErrorsOrDebug()) {
+                System.err.println("MonitoringFileWriter: startup archiving failed: " + t.getMessage());
+            }
+        }
+    }
+
+    private static void tryDelete(Path p) {
+        try { Files.deleteIfExists(p); } catch (IOException ignored) { }
+    }
+
+    // =========================================================================================
+    // Threads
+    // =========================================================================================
+
+    private static final class DaemonThreadFactory implements ThreadFactory {
+        private final String name;
+
+        private DaemonThreadFactory(String name) {
+            this.name = name;
+        }
+
+        @Override
+        public Thread newThread(Runnable r) {
+            Thread t = new Thread(r, name);
+            t.setDaemon(true);
+            return t;
+        }
+    }
+}

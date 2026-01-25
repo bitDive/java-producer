@@ -153,6 +153,17 @@
             <version>3.18.0</version>
         </dependency>
 
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-api</artifactId>
+            <version>2.25.3</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-core</artifactId>
+            <version>2.25.3</version>
+        </dependency>
+
     </dependencies>
 
     <build>
@@ -189,6 +200,7 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-source-plugin</artifactId>
                 <version>3.2.1</version>
+
                 <executions>
                     <execution>
                         <id>attach-sources</id>
@@ -218,6 +230,14 @@
                 <artifactId>maven-shade-plugin</artifactId>
                 <version>3.6.1</version>
 
+                <dependencies>
+                    <dependency>
+                        <groupId>org.apache.logging.log4j</groupId>
+                        <artifactId>log4j-transform-maven-shade-plugin-extensions</artifactId>
+                        <version>0.2.0</version>
+                    </dependency>
+                </dependencies>
+
                 <executions>
                     <execution>
                         <id>shade</id>
@@ -238,6 +258,8 @@
                             <!-- Явно укажи, что именно шейдить (так меньше сюрпризов) -->
                             <artifactSet>
                                 <includes>
+                                    <include>org.apache.logging.log4j:*</include>
+
                                     <include>com.fasterxml.jackson.core:*</include>
                                     <include>com.fasterxml.jackson.datatype:*</include>
                                     <include>com.fasterxml.jackson.module:*</include>
@@ -257,6 +279,10 @@
                             </artifactSet>
 
                             <relocations>
+                                <relocation>
+                                    <pattern>org.apache.logging.log4j</pattern>
+                                    <shadedPattern>io.bitdive.shaded.org.apache.logging.log4j</shadedPattern>
+                                </relocation>
                                 <relocation>
                                     <pattern>com.fasterxml.jackson</pattern>
                                     <shadedPattern>io.bitdive.shaded.com.fasterxml.jackson</shadedPattern>
@@ -310,8 +336,13 @@
                             </relocations>
 
                             <transformers>
-                                <!-- Чтобы META-INF/services корректно пережил relocation -->
+                                <transformer implementation="org.apache.logging.log4j.maven.plugins.shade.transformer.Log4j2PluginCacheFileTransformer"/>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <manifestEntries>
+                                        <Multi-Release>true</Multi-Release>
+                                    </manifestEntries>
+                                </transformer>
                             </transformers>
 
                             <filters>
