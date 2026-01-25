@@ -1,16 +1,16 @@
 package io.bitdive.parent.trasirovka.agent.byte_buddy_agent.db;
 
 import com.github.f4b6a3.uuid.UuidCreator;
-import io.bitdive.parent.parserConfig.YamlParserConfig;
+import io.bitdive.parent.trasirovka.agent.byte_buddy_agent.db.cached.ByteBuddyCachedOpenSearchReqest;
+import io.bitdive.parent.trasirovka.agent.byte_buddy_agent.db.cached.ByteBuddyCachedOpenSearchResponse;
 import io.bitdive.parent.trasirovka.agent.utils.*;
 import net.bytebuddy.agent.builder.AgentBuilder;
-import net.bytebuddy.agent.builder.ResettableClassFileTransformer;
+import net.bytebuddy.description.modifier.Visibility;
+import net.bytebuddy.implementation.FieldAccessor;
 import net.bytebuddy.implementation.MethodDelegation;
 import net.bytebuddy.implementation.bind.annotation.*;
 import net.bytebuddy.matcher.ElementMatchers;
 
-import java.io.InputStream;
-import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.charset.Charset;
@@ -24,11 +24,85 @@ import static io.bitdive.parent.message_producer.MessageService.sendMessageReque
 @SuppressWarnings("unused")
 public final class ByteBuddyAgentOpenSearch {
 
+    public interface BitDiveOpenSearchRestClientView {
+        Object bitdiveNodeTuple();
+        String bitdiveFirstHostString();
+    }
+
+    public interface BitDiveOpenSearchNodeTupleView {
+        List<?> bitdiveNodes();
+    }
+
+    public interface BitDiveOpenSearchNodeView {
+        Object bitdiveHost();
+    }
+
+    public interface BitDiveHttpHostView {
+        String bitdiveSchemeName();
+        String bitdiveHostName();
+        int bitdivePort();
+    }
+
     /*==================================================================*/
     /*  init                                                            */
     /*==================================================================*/
     public static AgentBuilder init(AgentBuilder agentBuilder)  {
         return agentBuilder
+
+                // RestClient host view (avoid reflection on private fields)
+                .type(ElementMatchers.named("org.opensearch.client.RestClient"))
+                .transform((b, td, cl, m, sd) -> b
+                        .implement(BitDiveOpenSearchRestClientView.class)
+                        .defineMethod("bitdiveNodeTuple", Object.class, Visibility.PUBLIC)
+                        .intercept(FieldAccessor.ofField("nodeTuple"))
+                        .defineMethod("bitdiveFirstHostString", String.class, Visibility.PUBLIC)
+                        .intercept(MethodDelegation.to(RestClientHostHelper.class)))
+
+                // NodeTuple view: expose nodes field without reflection
+                .type(ElementMatchers.nameStartsWith("org.opensearch.client")
+                        .and(ElementMatchers.nameContains("NodeTuple"))
+                        .and(ElementMatchers.declaresField(ElementMatchers.named("nodes"))))
+                .transform((b, td, cl, m, sd) -> b
+                        .implement(BitDiveOpenSearchNodeTupleView.class)
+                        .defineMethod("bitdiveNodes", List.class, Visibility.PUBLIC)
+                        .intercept(FieldAccessor.ofField("nodes")))
+
+                // Node view: expose getHost()
+                .type(ElementMatchers.nameStartsWith("org.opensearch.client")
+                        .and(ElementMatchers.nameEndsWith("Node")))
+                .transform((b, td, cl, m, sd) -> {
+                    try {
+                        return b.implement(BitDiveOpenSearchNodeView.class)
+                                .defineMethod("bitdiveHost", Object.class, Visibility.PUBLIC)
+                                .intercept(net.bytebuddy.implementation.MethodCall.invoke(
+                                        td.getDeclaredMethods().filter(ElementMatchers.named("getHost").and(ElementMatchers.takesArguments(0))).getOnly()
+                                ));
+                    } catch (Exception e) {
+                        return b;
+                    }
+                })
+
+                // HttpHost view (HC4/HC5): expose scheme/host/port
+                .type(ElementMatchers.nameEndsWith("HttpHost").and(ElementMatchers.nameStartsWith("org.apache")))
+                .transform((b, td, cl, m, sd) -> {
+                    try {
+                        return b.implement(BitDiveHttpHostView.class)
+                                .defineMethod("bitdiveSchemeName", String.class, Visibility.PUBLIC)
+                                .intercept(net.bytebuddy.implementation.MethodCall.invoke(
+                                        td.getDeclaredMethods().filter(ElementMatchers.named("getSchemeName").and(ElementMatchers.takesArguments(0))).getOnly()
+                                ))
+                                .defineMethod("bitdiveHostName", String.class, Visibility.PUBLIC)
+                                .intercept(net.bytebuddy.implementation.MethodCall.invoke(
+                                        td.getDeclaredMethods().filter(ElementMatchers.named("getHostName").and(ElementMatchers.takesArguments(0))).getOnly()
+                                ))
+                                .defineMethod("bitdivePort", int.class, Visibility.PUBLIC)
+                                .intercept(net.bytebuddy.implementation.MethodCall.invoke(
+                                        td.getDeclaredMethods().filter(ElementMatchers.named("getPort").and(ElementMatchers.takesArguments(0))).getOnly()
+                                ));
+                    } catch (Exception e) {
+                        return b;
+                    }
+                })
 
                 .type(ElementMatchers.named("org.opensearch.client.RestClient"))
                 .transform((b, td, cl, m, sd) ->
@@ -51,40 +125,34 @@ public final class ByteBuddyAgentOpenSearch {
             if (ContextManager.getMessageIdQueueNew().isEmpty()) return zuper.call();
 
             Object request = args[0];                               // Request
-            Object requestHeaders = extractHeaders(request);
+            Object requestHeaders = null;
+            if (request instanceof ByteBuddyCachedOpenSearchReqest.BitDiveOpenSearchRequestView) {
+                requestHeaders = ((ByteBuddyCachedOpenSearchReqest.BitDiveOpenSearchRequestView) request).bitdiveOptions();
+            }
 
             // Извлекаем информацию о хосте
-            String hostInfo = extractHost(restClient);
+            String hostInfo = null;
+            if (restClient instanceof BitDiveOpenSearchRestClientView) {
+                hostInfo = ((BitDiveOpenSearchRestClientView) restClient).bitdiveFirstHostString();
+            }
 
             /* ---------- запрос URL ---------- */
             String requestUrl = "";
             String httpMethod = "";
-            try {
-                Method getEndpointMethod = request.getClass().getMethod("getEndpoint");
-                Object endpoint = getEndpointMethod.invoke(request);
-                requestUrl = endpoint.toString();
-
-                Method getMethodMethod = request.getClass().getMethod("getMethod");
-                httpMethod = (String) getMethodMethod.invoke(request);
-
-                // Формируем полный URL с методом, хостом и параметрами
+            String reqBody = "";
+            if (request instanceof ByteBuddyCachedOpenSearchReqest.BitDiveOpenSearchRequestView) {
+                ByteBuddyCachedOpenSearchReqest.BitDiveOpenSearchRequestView rq =
+                        (ByteBuddyCachedOpenSearchReqest.BitDiveOpenSearchRequestView) request;
+                requestUrl = String.valueOf(rq.bitdiveEndpoint());
+                httpMethod = String.valueOf(rq.bitdiveMethod());
                 requestUrl = (hostInfo != null ? hostInfo : "") + requestUrl;
-            } catch (Exception e) {
-                if (LoggerStatusContent.isErrorsOrDebug()) {
-                    System.err.println("Error getting request URL: " + e.getMessage());
+                // force cache population
+                try {
+                    rq.bitdiveGetEntity();
+                } catch (Exception ignored) {
                 }
+                reqBody = toSafeBodyString(rq.bitdiveCachedBody());
             }
-
-            /* Сначала вызываем getEntity() чтобы заполнить кэш */
-            Method getEntityMethodRequest = request.getClass().getMethod("getEntity");
-            getEntityMethodRequest.setAccessible(true);
-            getEntityMethodRequest.invoke(request);
-
-            Field cachedBodyFieldRequest = request.getClass().getDeclaredField("cachedBody");
-            cachedBodyFieldRequest.setAccessible(true);
-            byte[] responseBodyBytesRequest = (byte[]) cachedBodyFieldRequest.get(request);
-
-            String reqBody = toSafeBodyString(responseBodyBytesRequest);
 
 
             OffsetDateTime start = OffsetDateTime.now();
@@ -101,30 +169,16 @@ public final class ByteBuddyAgentOpenSearch {
 
                 String status = null, respBody = "";
                 Object respHeaders = null;
-                if (resp != null) {
-                    Object sl = resp.getClass().getMethod("getStatusLine").invoke(resp);
-                    status = String.valueOf(sl.getClass().getMethod("getStatusCode").invoke(sl));
-
-                    /* Сначала вызываем getEntity() чтобы заполнить кэш */
-                    Method getEntityMethod = resp.getClass().getMethod("getEntity");
-                    getEntityMethod.setAccessible(true);
-                    getEntityMethod.invoke(resp); // Этот вызов заполнит cachedBody через ByteBuddyCachedOpenSearchResponse
-
-                    /* Теперь читаем из кэша */
+                if (resp instanceof ByteBuddyCachedOpenSearchResponse.BitDiveOpenSearchResponseView) {
+                    ByteBuddyCachedOpenSearchResponse.BitDiveOpenSearchResponseView r =
+                            (ByteBuddyCachedOpenSearchResponse.BitDiveOpenSearchResponseView) resp;
+                    status = String.valueOf(r.bitdiveStatusCodeValue());
+                    respHeaders = r.bitdiveHeaders();
                     try {
-                        Field cachedBodyField = resp.getClass().getDeclaredField("cachedBody");
-                        cachedBodyField.setAccessible(true);
-                        byte[] responseBodyBytes = (byte[]) cachedBodyField.get(resp);
-
-                        respBody = toSafeBodyString(responseBodyBytes);
-                    } catch (NoSuchFieldException e) {
-                        /* Если поле cachedBody не найдено, значит ByteBuddyCachedOpenSearchResponse не инструментировал этот класс */
-                        if (LoggerStatusContent.isErrorsOrDebug()) {
-                            System.err.println("cachedBody field not found: " + e.getMessage());
-                        }
+                        r.bitdiveGetEntity(); // fills cache
+                    } catch (Exception ignored) {
                     }
-
-                    respHeaders = extractHeaders(resp);             // ★ новый способ
+                    respBody = toSafeBodyString(r.bitdiveCachedBody());
                 }
                 String errorCallMessage = "";
                 if (err != null)
@@ -198,102 +252,30 @@ public final class ByteBuddyAgentOpenSearch {
         return controlChars > sample / 10;
     }
 
-    private static String extractHost(Object restClient) {
-        try {
-            // Получаем nodeTuple из RestClient
-            Field nodeTupleField = restClient.getClass().getDeclaredField("nodeTuple");
-            nodeTupleField.setAccessible(true);
-            Object nodeTuple = nodeTupleField.get(restClient);
-
-            if (nodeTuple != null) {
-                // Получаем nodes из NodeTuple
-                Field nodesField = nodeTuple.getClass().getDeclaredField("nodes");
-                nodesField.setAccessible(true);
-                Object nodes = nodesField.get(nodeTuple);
-
-                if (nodes != null && nodes instanceof List && !((List<?>) nodes).isEmpty()) {
-                    // Получаем первый узел (Node)
-                    Object node = ((List<?>) nodes).get(0);
-
-                    // Получаем HttpHost из Node
-                    Method getHostMethod = node.getClass().getMethod("getHost");
-                    Object host = getHostMethod.invoke(node);
-
-                    if (host != null) {
-                        // Получаем схему, хост и порт из HttpHost
-                        Method getSchemeNameMethod = host.getClass().getMethod("getSchemeName");
-                        String scheme = (String) getSchemeNameMethod.invoke(host);
-
-                        Method getHostNameMethod = host.getClass().getMethod("getHostName");
-                        String hostname = (String) getHostNameMethod.invoke(host);
-
-                        Method getPortMethod = host.getClass().getMethod("getPort");
-                        int port = (int) getPortMethod.invoke(host);
-
-                        return scheme + "://" + hostname + ":" + port;
-                    }
-                }
-            }
-        } catch (Exception e) {
-            if (LoggerStatusContent.isErrorsOrDebug()) {
-                System.err.println("Error extracting host info: " + e.getMessage());
-            }
-        }
-        return null;
-    }
-
-    private static void addTraceHeaders(Object request) {
-        try {
-            Object opts = request.getClass().getMethod("getOptions").invoke(request);
-            Object bldr = opts.getClass().getMethod("toBuilder").invoke(opts);
-
-            Method addH = bldr.getClass().getMethod("addHeader", String.class, String.class);
-            addH.invoke(bldr, "x-BitDiv-custom-span-id", ContextManager.getSpanId());
-            addH.invoke(bldr, "x-BitDiv-custom-parent-message-id", ContextManager.getMessageIdQueueNew());
-
-            Object newOpts = bldr.getClass().getMethod("build").invoke(bldr);
-            request.getClass().getMethod("setOptions", newOpts.getClass()).invoke(request, newOpts);
-        } catch (Exception e) {
-            if (LoggerStatusContent.isErrorsOrDebug())
-                System.err.println("trace headers failed: " + e.getMessage());
-        }
-    }
-
-    /**
-     * Безопасно вызывает любой setEntity(HttpEntity).
-     */
-    private static void setEntity(Object target, Object entity) {
-        try {
-            for (Method m : target.getClass().getMethods()) {
-                if ("setEntity".equals(m.getName()) && m.getParameterCount() == 1) {
-                    m.invoke(target, entity);
-                    return;
-                }
-            }
-        } catch (Exception e) {
-            if (LoggerStatusContent.isErrorsOrDebug())
-                System.err.println("setEntity failed: " + e.getMessage());
-        }
-    }
-
-    /**
-     * Пытается получить заголовки из Response любым доступным способом.
-     */
-    private static Object extractHeaders(Object resp) {
-        try {
-            // OpenSearch Response#getHeaders() → Map<String,List<String>>
-            Method m = resp.getClass().getMethod("getHeaders");
-            return m.invoke(resp);
-        } catch (NoSuchMethodException ignore) {
+    public static final class RestClientHostHelper {
+        @RuntimeType
+        public static String bitdiveFirstHostString(@This Object self) {
             try {
-                // Apache HttpResponse#getAllHeaders() → Header[]
-                Method m2 = resp.getClass().getMethod("getAllHeaders");
-                return m2.invoke(resp);
+                if (!(self instanceof BitDiveOpenSearchRestClientView)) return null;
+                Object nodeTuple = ((BitDiveOpenSearchRestClientView) self).bitdiveNodeTuple();
+                if (!(nodeTuple instanceof BitDiveOpenSearchNodeTupleView)) return null;
+                List<?> nodes = ((BitDiveOpenSearchNodeTupleView) nodeTuple).bitdiveNodes();
+                if (nodes == null || nodes.isEmpty()) return null;
+                Object node = nodes.get(0);
+                if (!(node instanceof BitDiveOpenSearchNodeView)) return null;
+                Object host = ((BitDiveOpenSearchNodeView) node).bitdiveHost();
+                if (!(host instanceof BitDiveHttpHostView)) return null;
+                BitDiveHttpHostView h = (BitDiveHttpHostView) host;
+                String scheme = h.bitdiveSchemeName();
+                String hostname = h.bitdiveHostName();
+                int port = h.bitdivePort();
+                if (scheme == null) scheme = "http";
+                if (hostname == null) return null;
+                if (port <= 0) return scheme + "://" + hostname;
+                return scheme + "://" + hostname + ":" + port;
             } catch (Exception e) {
                 return null;
             }
-        } catch (Exception e) {
-            return null;
         }
     }
 }

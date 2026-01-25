@@ -16,9 +16,7 @@ public class SSLContextCustomBitDive {
     private static volatile SSLContext strictCtx;
     private static volatile SSLContext trustAllCtx;
 
-    /**
-     * Строгий контекст с цепочкой сервера
-     */
+
     public static SSLContext strict() {
         if (strictCtx == null) {
             synchronized (SSLContextCustomBitDive.class) {
@@ -30,9 +28,7 @@ public class SSLContextCustomBitDive {
         return strictCtx;
     }
 
-    /**
-     * Контекст, отключающий все проверки – использовать ТОЛЬКО как fallback
-     */
+
     public static SSLContext trustAll() {
         if (trustAllCtx == null) {
             synchronized (SSLContextCustomBitDive.class) {

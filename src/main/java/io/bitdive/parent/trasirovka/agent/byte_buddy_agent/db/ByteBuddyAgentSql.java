@@ -104,6 +104,7 @@ public class ByteBuddyAgentSql {
             try {
                 if (!context.flagNoMonitoring && !ContextManager.isMessageIdQueueEmpty()) {
 
+                    System.err.println(returnValue);
                     sendMessageDBEnd(
                             context.UUIDMessage,
                             context.traceId,
@@ -131,6 +132,7 @@ public class ByteBuddyAgentSql {
         List<Map<String, Object>> rows = new ArrayList<>();
         ResultSetMetaData meta = rs.getMetaData();
         int colCount = meta.getColumnCount();
+
         while (rs.next()) {
             Map<String, Object> row = new HashMap<>();
             for (int i = 1; i <= colCount; i++) {

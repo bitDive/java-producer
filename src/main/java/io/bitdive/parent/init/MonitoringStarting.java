@@ -6,6 +6,7 @@ import io.bitdive.parent.trasirovka.agent.byte_buddy_agent.db.*;
 import io.bitdive.parent.trasirovka.agent.byte_buddy_agent.db.cached.ByteBuddyCachedOpenSearchReqest;
 import io.bitdive.parent.trasirovka.agent.byte_buddy_agent.db.cached.ByteBuddyCachedOpenSearchResponse;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
+import io.bitdive.parent.utils.Pair;
 import net.bytebuddy.agent.ByteBuddyAgent;
 import net.bytebuddy.agent.builder.AgentBuilder;
 
@@ -19,7 +20,7 @@ public class MonitoringStarting {
                 registerShutdownHook();
 
                 VaultGettingConfig.initVaultConnect();
-                LoggerStatusContent.initMonitoringDelay(Duration.ofSeconds(60));
+                LoggerStatusContent.initMonitoringDelay(Duration.ofSeconds(1));
                 Instrumentation instrumentation = ByteBuddyAgent.install();
 
                 AgentBuilder agentStandard = new AgentBuilder.Default()
@@ -39,8 +40,12 @@ public class MonitoringStarting {
                                 .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION);
 
                 agentStandard = ByteBuddyAgentThreadCreator.init(agentStandard);
-                agentStandard = ByteBuddySimpleClientHttpResponse.init(agentStandard);
-                agentStandard = ByteBuddyAgentRestTemplateRequestWeb.init(agentStandard);
+              //  agentStandard = ByteBuddySimpleClientHttpResponse.init(agentStandard);
+
+                Pair<AgentBuilder,AgentBuilder> retPair = ByteBuddyAgentRestTemplateRequestWeb.init(agentStandard,agentStandardRetransformation);
+                agentStandard=retPair.getKey();
+                agentStandardRetransformation=retPair.getVal();
+
                 agentStandard = ByteBuddyAgentCatalinaResponse.init(agentStandard);
                 agentStandard = ByteBuddyAgentFeignRequestWeb.init(agentStandard);
 

@@ -2,8 +2,8 @@ package io.bitdive.parent.trasirovka.agent.byte_buddy_agent;
 
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import net.bytebuddy.agent.builder.AgentBuilder;
-import net.bytebuddy.agent.builder.ResettableClassFileTransformer;
 import net.bytebuddy.description.modifier.Visibility;
+import net.bytebuddy.implementation.FieldAccessor;
 import net.bytebuddy.implementation.MethodDelegation;
 import net.bytebuddy.implementation.bind.annotation.RuntimeType;
 import net.bytebuddy.implementation.bind.annotation.SuperCall;
@@ -14,11 +14,18 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.lang.instrument.Instrumentation;
-import java.lang.reflect.Field;
 import java.util.concurrent.Callable;
 
 public class ByteBuddySimpleClientHttpResponse {
+
+    /**
+     * View injected into {@code ClientHttpResponse} implementations to access cached body without reflection.
+     */
+    public interface BitDiveSimpleClientHttpResponseView {
+        byte[] bitdiveCachedBody();
+        void bitdiveSetCachedBody(byte[] bytes);
+    }
+
     public static AgentBuilder  init(AgentBuilder agentBuilder) {
         try {
             Class<?> clientClass = Class.forName("org.springframework.http.client.ClientHttpResponse");
@@ -26,6 +33,12 @@ public class ByteBuddySimpleClientHttpResponse {
                     .type(ElementMatchers.nameContains("org.springframework").and(ElementMatchers.isSubTypeOf(clientClass)))
                     .transform((builder, typeDescription, classLoader, module, dd) ->
                             builder.defineField("cachedBody", byte[].class, Visibility.PRIVATE)
+                                    .implement(BitDiveSimpleClientHttpResponseView.class)
+                                    .defineMethod("bitdiveCachedBody", byte[].class, Visibility.PUBLIC)
+                                    .intercept(FieldAccessor.ofField("cachedBody"))
+                                    .defineMethod("bitdiveSetCachedBody", void.class, Visibility.PUBLIC)
+                                    .withParameters(byte[].class)
+                                    .intercept(FieldAccessor.ofField("cachedBody"))
                                     .method(ElementMatchers.named("getBody"))
                                     .intercept(MethodDelegation.to(GetBodyInterceptor.class))
                     );
@@ -41,10 +54,11 @@ public class ByteBuddySimpleClientHttpResponse {
 
         @RuntimeType
         public static InputStream intercept(@SuperCall Callable<InputStream> zuper, @This Object obj) throws Exception {
-
-            Field cachedBodyField = obj.getClass().getDeclaredField("cachedBody");
-            cachedBodyField.setAccessible(true);
-            byte[] cachedBody = (byte[]) cachedBodyField.get(obj);
+            if (!(obj instanceof BitDiveSimpleClientHttpResponseView)) {
+                return zuper.call();
+            }
+            BitDiveSimpleClientHttpResponseView view = (BitDiveSimpleClientHttpResponseView) obj;
+            byte[] cachedBody = view.bitdiveCachedBody();
 
             if (cachedBody != null) {
                 return new ByteArrayInputStream(cachedBody);
@@ -52,7 +66,7 @@ public class ByteBuddySimpleClientHttpResponse {
 
             InputStream originalInputStream = zuper.call();
             byte[] responseBodyBytes = readAllBytes(originalInputStream);
-            cachedBodyField.set(obj, responseBodyBytes);
+            view.bitdiveSetCachedBody(responseBodyBytes);
             return new ByteArrayInputStream(responseBodyBytes);
         }
 

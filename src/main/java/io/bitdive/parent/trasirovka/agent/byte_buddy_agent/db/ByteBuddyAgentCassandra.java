@@ -1,18 +1,14 @@
 package io.bitdive.parent.trasirovka.agent.byte_buddy_agent.db;
 
 import com.github.f4b6a3.uuid.UuidCreator;
-import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.ContextManager;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import io.bitdive.parent.trasirovka.agent.utils.MessageTypeEnum;
 import io.bitdive.parent.trasirovka.agent.utils.ReflectionUtils;
 import net.bytebuddy.agent.builder.AgentBuilder;
-import net.bytebuddy.agent.builder.ResettableClassFileTransformer;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.matcher.ElementMatchers;
 
-import java.lang.instrument.Instrumentation;
-import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -23,26 +19,128 @@ import java.util.UUID;
 
 import static io.bitdive.parent.message_producer.MessageService.sendMessageDBEnd;
 import static io.bitdive.parent.message_producer.MessageService.sendMessageDBStart;
-import static io.bitdive.parent.trasirovka.agent.utils.DataUtils.getaNullThrowable;
 
 public class ByteBuddyAgentCassandra {
+
+    /**
+     * Injected into BoundStatement implementations to avoid reflection.
+     */
+    public interface BitDiveCassandraBoundStatementView {
+        String bitdiveQueryString();
+        Object bitdiveValuesObj();
+    }
+
+    /**
+     * Injected into CqlSession implementations to avoid reflection.
+     */
+    public interface BitDiveCassandraSessionView {
+        Object bitdiveMetadata();
+    }
+
+    /**
+     * Injected into Metadata implementations to avoid reflection.
+     */
+    public interface BitDiveCassandraMetadataView {
+        Object bitdiveNodes();
+    }
 
     public static AgentBuilder init(AgentBuilder agentBuilder)  {
         try {
             Class<?> clientClass = Class.forName("com.datastax.oss.driver.api.core.CqlSession");
+            Class<?> boundStmtClass = Class.forName("com.datastax.oss.driver.api.core.cql.BoundStatement");
+            Class<?> metadataClass = Class.forName("com.datastax.oss.driver.api.core.metadata.Metadata");
             return agentBuilder
+                    // BoundStatement view
+                    .type(td -> td.isAssignableTo(boundStmtClass)
+                            && !td.isInterface()
+                            && !td.getName().contains("Proxy")
+                            && !td.getName().contains("Delegating"))
+                    .transform((builder, td, cl, module, dd) -> {
+                        try {
+                            // query: getPreparedStatement().getQuery().toString()
+                            net.bytebuddy.description.method.MethodDescription.InDefinedShape mGetPrepared =
+                                    td.getDeclaredMethods().filter(ElementMatchers.named("getPreparedStatement").and(ElementMatchers.takesArguments(0))).getOnly();
+                            net.bytebuddy.description.type.TypeDescription psType = mGetPrepared.getReturnType().asErasure();
+                            net.bytebuddy.description.method.MethodDescription.InDefinedShape mGetQuery =
+                                    psType.getDeclaredMethods().filter(ElementMatchers.named("getQuery").and(ElementMatchers.takesArguments(0))).getOnly();
+                            net.bytebuddy.description.method.MethodDescription.InDefinedShape mToString =
+                                    new net.bytebuddy.description.method.MethodDescription.ForLoadedMethod(Object.class.getMethod("toString"));
+
+                            builder = builder
+                                    .implement(BitDiveCassandraBoundStatementView.class)
+                                    .defineMethod("bitdiveQueryString", String.class, net.bytebuddy.description.modifier.Visibility.PUBLIC)
+                                    .intercept(
+                                            net.bytebuddy.implementation.MethodCall.invoke(mToString)
+                                                    .onMethodCall(
+                                                            net.bytebuddy.implementation.MethodCall.invoke(mGetQuery)
+                                                                    .onMethodCall(net.bytebuddy.implementation.MethodCall.invoke(mGetPrepared))
+                                                    )
+                                    );
+                        } catch (Exception ignored) {
+                            // fall back later
+                        }
+
+                        // values: prefer getValues(), else field "values" if present
+                        try {
+                            net.bytebuddy.description.method.MethodDescription.InDefinedShape mGetValues =
+                                    td.getDeclaredMethods().filter(ElementMatchers.named("getValues").and(ElementMatchers.takesArguments(0))).getOnly();
+                            builder = builder
+                                    .implement(BitDiveCassandraBoundStatementView.class)
+                                    .defineMethod("bitdiveValuesObj", Object.class, net.bytebuddy.description.modifier.Visibility.PUBLIC)
+                                    .intercept(net.bytebuddy.implementation.MethodCall.invoke(mGetValues));
+                        } catch (Exception ignored) {
+                            try {
+                                // only if field exists
+                                td.getDeclaredFields().filter(ElementMatchers.named("values")).getOnly();
+                                builder = builder
+                                        .implement(BitDiveCassandraBoundStatementView.class)
+                                        .defineMethod("bitdiveValuesObj", Object.class, net.bytebuddy.description.modifier.Visibility.PUBLIC)
+                                        .intercept(net.bytebuddy.implementation.FieldAccessor.ofField("values"));
+                            } catch (Exception ignored2) {
+                            }
+                        }
+
+                        return builder;
+                    })
+
+                    // Metadata view
+                    .type(td -> td.isAssignableTo(metadataClass) && !td.isInterface())
+                    .transform((builder, td, cl, module, dd) -> {
+                        try {
+                            net.bytebuddy.description.method.MethodDescription.InDefinedShape mGetNodes =
+                                    td.getDeclaredMethods().filter(ElementMatchers.named("getNodes").and(ElementMatchers.takesArguments(0))).getOnly();
+                            return builder
+                                    .implement(BitDiveCassandraMetadataView.class)
+                                    .defineMethod("bitdiveNodes", Object.class, net.bytebuddy.description.modifier.Visibility.PUBLIC)
+                                    .intercept(net.bytebuddy.implementation.MethodCall.invoke(mGetNodes));
+                        } catch (Exception e) {
+                            return builder;
+                        }
+                    })
+
+                    // CqlSession view
                     .type(typeDescription ->
                             typeDescription.isAssignableTo(clientClass)
                                     && !typeDescription.getName().contains("Proxy")
                                     && !typeDescription.getName().contains("Delegating")
                     )
-                    .transform((builder, typeDescription, classLoader, module, dd) ->
-                            builder.visit(Advice.to(CassandraAdvice.class)
-                                    .on(ElementMatchers.named("execute")
-                                            .and(ElementMatchers.not(ElementMatchers.nameContains("Internal")))
-                                    )
-                            )
-                    );
+                    .transform((builder, typeDescription, classLoader, module, dd) -> {
+                        try {
+                            net.bytebuddy.description.method.MethodDescription.InDefinedShape mGetMetadata =
+                                    typeDescription.getDeclaredMethods()
+                                            .filter(ElementMatchers.named("getMetadata").and(ElementMatchers.takesArguments(0)))
+                                            .getOnly();
+                            builder = builder
+                                    .implement(BitDiveCassandraSessionView.class)
+                                    .defineMethod("bitdiveMetadata", Object.class, net.bytebuddy.description.modifier.Visibility.PUBLIC)
+                                    .intercept(net.bytebuddy.implementation.MethodCall.invoke(mGetMetadata));
+                        } catch (Exception ignored) {
+                        }
+
+                        return builder.visit(Advice.to(CassandraAdvice.class)
+                                .on(ElementMatchers.named("execute")
+                                        .and(ElementMatchers.not(ElementMatchers.nameContains("Internal")))));
+                    });
         } catch (Exception e) {
             if (LoggerStatusContent.isErrorsOrDebug()) {
                 System.err.println("Class com.datastax.oss.driver.api.core.CqlSession not found in ClassLoader.");
@@ -121,23 +219,14 @@ public class ByteBuddyAgentCassandra {
 
         public static String extractQuery(Object request) {
             String query = "";
-            try {
-                Method psMethod = request.getClass().getMethod("getPreparedStatement");
-                Object preparedStatement = psMethod.invoke(request);
-                if (preparedStatement != null) {
-                    try {
-                        Method queryMethod = preparedStatement.getClass().getMethod("getQuery");
-                        Object queryObj = queryMethod.invoke(preparedStatement);
-                        if (queryObj != null) {
-                            query = queryObj.toString();
-                        }
-                    } catch (Exception e) {
-                    }
+            if (request instanceof BitDiveCassandraBoundStatementView) {
+                try {
+                    query = ((BitDiveCassandraBoundStatementView) request).bitdiveQueryString();
+                } catch (Exception ignored) {
                 }
-            } catch (Exception ex) {
             }
-            if (query.isEmpty()) {
-                query = extractQueryWithReflection(request);
+            if (query == null || query.isEmpty()) {
+                query = request.toString();
             }
             if (request.getClass().getSimpleName().contains("BoundStatement")) {
                 Object[] params = extractParameters(request);
@@ -148,42 +237,12 @@ public class ByteBuddyAgentCassandra {
             return query;
         }
 
-        private static String extractQueryWithReflection(Object request) {
-            String query = "";
-            try {
-                Field field = request.getClass().getDeclaredField("query");
-                field.setAccessible(true);
-                Object value = field.get(request);
-                if (value != null) {
-                    query = value.toString();
-                }
-            } catch (NoSuchFieldException nsfe) {
-                try {
-                    Method method = request.getClass().getMethod("getQuery");
-                    Object result = method.invoke(request);
-                    if (result != null) {
-                        query = result.toString();
-                    }
-                } catch (Exception e) {
-                    query = request.toString();
-                }
-            } catch (Exception e) {
-                query = request.toString();
-            }
-            return query;
-        }
-
         private static Object[] extractParameters(Object request) {
             Object valuesObj = null;
-            try {
-                Method getValuesMethod = request.getClass().getMethod("getValues");
-                valuesObj = getValuesMethod.invoke(request);
-            } catch (Exception e) {
+            if (request instanceof BitDiveCassandraBoundStatementView) {
                 try {
-                    Field valuesField = request.getClass().getDeclaredField("values");
-                    valuesField.setAccessible(true);
-                    valuesObj = valuesField.get(request);
-                } catch (Exception ex) {
+                    valuesObj = ((BitDiveCassandraBoundStatementView) request).bitdiveValuesObj();
+                } catch (Exception ignored) {
                 }
             }
             if (valuesObj != null) {
@@ -254,19 +313,18 @@ public class ByteBuddyAgentCassandra {
 
         public static String extractConnectionAddress(Object session) {
             try {
-                Method getMetadata = session.getClass().getMethod("getMetadata");
-                Object metadata = getMetadata.invoke(session);
-                if (metadata != null) {
-                    Method getNodes = metadata.getClass().getMethod("getNodes");
-                    Object nodesObj = getNodes.invoke(metadata);
-                    if (nodesObj instanceof Map) {
-                        Map<?, ?> nodes = (Map<?, ?>) nodesObj;
-                        if (!nodes.isEmpty()) {
-                            Object firstNode = nodes.values().iterator().next();
-                            Method getEndPoint = firstNode.getClass().getMethod("getEndPoint");
-                            Object endpoint = getEndPoint.invoke(firstNode);
-                            if (endpoint != null) {
-                                return endpoint.toString();
+                if (session instanceof BitDiveCassandraSessionView) {
+                    Object metadata = ((BitDiveCassandraSessionView) session).bitdiveMetadata();
+                    if (metadata instanceof BitDiveCassandraMetadataView) {
+                        Object nodesObj = ((BitDiveCassandraMetadataView) metadata).bitdiveNodes();
+                        if (nodesObj instanceof Map) {
+                            Map<?, ?> nodes = (Map<?, ?>) nodesObj;
+                            if (!nodes.isEmpty()) {
+                                Object firstNode = nodes.values().iterator().next();
+                                if (firstNode != null) {
+                                    // Best-effort without reflection: node.toString() usually contains endpoint/address
+                                    return firstNode.toString();
+                                }
                             }
                         }
                     }

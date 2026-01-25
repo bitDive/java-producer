@@ -2,8 +2,12 @@ package io.bitdive.parent.trasirovka.agent.byte_buddy_agent.db.cached;
 
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import net.bytebuddy.agent.builder.AgentBuilder;
-import net.bytebuddy.agent.builder.ResettableClassFileTransformer;
+import net.bytebuddy.description.method.MethodDescription;
+import net.bytebuddy.description.method.MethodList;
 import net.bytebuddy.description.modifier.Visibility;
+import net.bytebuddy.description.type.TypeDescription;
+import net.bytebuddy.implementation.FieldAccessor;
+import net.bytebuddy.implementation.MethodCall;
 import net.bytebuddy.implementation.MethodDelegation;
 import net.bytebuddy.implementation.bind.annotation.Argument;
 import net.bytebuddy.implementation.bind.annotation.RuntimeType;
@@ -13,23 +17,102 @@ import net.bytebuddy.matcher.ElementMatchers;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
-import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Constructor;
-import java.lang.reflect.Method;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.Callable;
 
 public final class ByteBuddyCachedOpenSearchReqest {
 
+    /**
+     * Injected into Apache HttpEntity implementations (HC4/HC5) to avoid reflection when reading content/content-type.
+     */
+    public interface BitDiveHttpEntityView {
+        InputStream bitdiveContent();
+        String bitdiveContentTypeValue();
+    }
+
+    /**
+     * Injected into {@code org.opensearch.client.Request} to avoid reflection in other agents.
+     */
+    public interface BitDiveOpenSearchRequestView {
+        String bitdiveEndpoint();
+        String bitdiveMethod();
+        Object bitdiveOptions();
+
+        byte[] bitdiveCachedBody();
+        void bitdiveSetCachedBody(byte[] bytes);
+
+        String bitdiveCachedContentType();
+        void bitdiveSetCachedContentType(String v);
+
+        Object bitdiveGetEntity();
+    }
+
     public static AgentBuilder init(AgentBuilder agentBuilder)  {
         return agentBuilder
+                // Apache HC4 HttpEntity implementations
+                .type(ElementMatchers.hasSuperType(ElementMatchers.named("org.apache.http.HttpEntity"))
+                        .and(ElementMatchers.not(ElementMatchers.isInterface())))
+                .transform((b, td, cl, m, sd) -> instrumentHttpEntity(b, td, "org.apache.http"))
+
+                // Apache HC5 HttpEntity implementations
+                .type(ElementMatchers.hasSuperType(ElementMatchers.named("org.apache.hc.core5.http.HttpEntity"))
+                        .and(ElementMatchers.not(ElementMatchers.isInterface())))
+                .transform((b, td, cl, m, sd) -> instrumentHttpEntity(b, td, "org.apache.hc"))
+
                 .type(ElementMatchers.named("org.opensearch.client.Request"))
-                .transform((b, td, cl, m, sd) ->
-                        b.defineField("cachedBody", byte[].class, Visibility.PUBLIC)
-                                .defineField("cachedContentType", String.class, Visibility.PUBLIC)
-                                .method(ElementMatchers.named("getEntity").and(ElementMatchers.takesArguments(0)))
-                                .intercept(MethodDelegation.to(GetEntityInterceptor.class))
-                                .method(ElementMatchers.named("getHeader").and(ElementMatchers.takesArguments(1)))
-                                .intercept(MethodDelegation.to(GetHeaderInterceptor.class)))
+                .transform((b, td, cl, m, sd) -> {
+                    MethodDescription.InDefinedShape mGetEndpoint = findMethodInHierarchy(td, "getEndpoint", 0);
+                    MethodDescription.InDefinedShape mGetMethod = findMethodInHierarchy(td, "getMethod", 0);
+                    MethodDescription.InDefinedShape mGetOptions = findMethodInHierarchy(td, "getOptions", 0);
+                    MethodDescription.InDefinedShape mGetEntity = findMethodInHierarchy(td, "getEntity", 0);
+
+                    MethodDescription.InDefinedShape mToString;
+                    try {
+                        mToString = new MethodDescription.ForLoadedMethod(Object.class.getMethod("toString"));
+                    } catch (NoSuchMethodException e) {
+                        return b;
+                    }
+
+                    b = b
+                            .defineField("cachedBody", byte[].class, Visibility.PUBLIC)
+                            .defineField("cachedContentType", String.class, Visibility.PUBLIC)
+                            .implement(BitDiveOpenSearchRequestView.class)
+                            .defineMethod("bitdiveCachedBody", byte[].class, Visibility.PUBLIC)
+                            .intercept(FieldAccessor.ofField("cachedBody"))
+                            .defineMethod("bitdiveSetCachedBody", void.class, Visibility.PUBLIC)
+                            .withParameters(byte[].class)
+                            .intercept(FieldAccessor.ofField("cachedBody"))
+                            .defineMethod("bitdiveCachedContentType", String.class, Visibility.PUBLIC)
+                            .intercept(FieldAccessor.ofField("cachedContentType"))
+                            .defineMethod("bitdiveSetCachedContentType", void.class, Visibility.PUBLIC)
+                            .withParameters(String.class)
+                            .intercept(FieldAccessor.ofField("cachedContentType"));
+
+                    if (mGetEndpoint != null) {
+                        b = b.defineMethod("bitdiveEndpoint", String.class, Visibility.PUBLIC)
+                                .intercept(MethodCall.invoke(mToString).onMethodCall(MethodCall.invoke(mGetEndpoint)));
+                    }
+                    if (mGetMethod != null) {
+                        b = b.defineMethod("bitdiveMethod", String.class, Visibility.PUBLIC)
+                                .intercept(MethodCall.invoke(mGetMethod));
+                    }
+                    if (mGetOptions != null) {
+                        b = b.defineMethod("bitdiveOptions", Object.class, Visibility.PUBLIC)
+                                .intercept(MethodCall.invoke(mGetOptions));
+                    }
+                    if (mGetEntity != null) {
+                        b = b.defineMethod("bitdiveGetEntity", Object.class, Visibility.PUBLIC)
+                                .intercept(MethodCall.invoke(mGetEntity));
+                    }
+
+                    return b
+                            .method(ElementMatchers.named("getEntity").and(ElementMatchers.takesArguments(0)))
+                            .intercept(MethodDelegation.to(GetEntityInterceptor.class))
+                            .method(ElementMatchers.named("getHeader").and(ElementMatchers.takesArguments(1)))
+                            .intercept(MethodDelegation.to(GetHeaderInterceptor.class));
+                })
                 ;
     }
 
@@ -43,15 +126,9 @@ public final class ByteBuddyCachedOpenSearchReqest {
 
             // Если запрашивают Content-Type и у нас есть кешированное значение, возвращаем его
             if ("Content-Type".equalsIgnoreCase(headerName)) {
-                try {
-                    String cachedContentType = (String) resp.getClass()
-                            .getDeclaredField("cachedContentType")
-                            .get(resp);
-                    if (cachedContentType != null) {
-                        return cachedContentType;
-                    }
-                } catch (Exception e) {
-                    // Игнорируем и просто продолжаем к оригинальному методу
+                if (resp instanceof BitDiveOpenSearchRequestView) {
+                    String cachedContentType = ((BitDiveOpenSearchRequestView) resp).bitdiveCachedContentType();
+                    if (cachedContentType != null) return cachedContentType;
                 }
             }
 
@@ -67,13 +144,14 @@ public final class ByteBuddyCachedOpenSearchReqest {
         public static Object intercept(@SuperCall Callable<Object> zuper,
                                        @This Object resp) throws Exception {
 
-            byte[] cached = (byte[]) resp.getClass()
-                    .getDeclaredField("cachedBody")
-                    .get(resp);
+            if (!(resp instanceof BitDiveOpenSearchRequestView)) {
+                return zuper.call();
+            }
+            BitDiveOpenSearchRequestView view = (BitDiveOpenSearchRequestView) resp;
+
+            byte[] cached = view.bitdiveCachedBody();
             if (cached != null) {
-                String contentType = (String) resp.getClass()
-                        .getDeclaredField("cachedContentType")
-                        .get(resp);
+                String contentType = view.bitdiveCachedContentType();
                 return newByteArrayEntity(cached, contentType);
             }
 
@@ -83,34 +161,27 @@ public final class ByteBuddyCachedOpenSearchReqest {
 
             // Сохраняем Content-Type заголовок
             String contentType = null;
-            try {
-                // Получаем Content-Type из оригинального Entity
-                Method ctMethod = origEntity.getClass().getMethod("getContentType");
-                Object headerObj = ctMethod.invoke(origEntity);
-                if (headerObj != null) {
-                    Method valMethod = headerObj.getClass().getMethod("getValue");
-                    contentType = (String) valMethod.invoke(headerObj);
-
-                    // Сохраняем Content-Type в поле
-                    resp.getClass().getDeclaredField("cachedContentType")
-                            .set(resp, contentType);
-                }
-            } catch (Exception e) {
-                if (LoggerStatusContent.isErrorsOrDebug()) {
-                    System.err.println("Error capturing Content-Type: " + e.getMessage());
+            if (origEntity instanceof BitDiveHttpEntityView) {
+                try {
+                    contentType = ((BitDiveHttpEntityView) origEntity).bitdiveContentTypeValue();
+                    view.bitdiveSetCachedContentType(contentType);
+                } catch (Exception e) {
+                    if (LoggerStatusContent.isErrorsOrDebug()) {
+                        System.err.println("Error capturing Content-Type: " + e.getMessage());
+                    }
                 }
             }
 
             try {
-                Method getContent = origEntity.getClass().getMethod("getContent");
-                getContent.setAccessible(true);
-                try (InputStream in = (InputStream) getContent.invoke(origEntity)) {
+                InputStream in = (origEntity instanceof BitDiveHttpEntityView)
+                        ? ((BitDiveHttpEntityView) origEntity).bitdiveContent()
+                        : null;
+                try (InputStream ignored = in) {
                     if (in != null) {
                         byte[] bytes = readAll(in);
 
                         // кладём в поле
-                        resp.getClass().getDeclaredField("cachedBody")
-                                .set(resp, bytes);
+                        view.bitdiveSetCachedBody(bytes);
 
                         return newByteArrayEntity(bytes, contentType);
                     }
@@ -174,6 +245,76 @@ public final class ByteBuddyCachedOpenSearchReqest {
                 }
                 return bae5.getConstructor(byte[].class).newInstance(bytes);
             }
+        }
+    }
+
+    // =========================
+    // ByteBuddy helpers
+    // =========================
+
+    private static MethodDescription.InDefinedShape findMethodInHierarchy(TypeDescription type, String name, int argsCount) {
+        return findMethodInHierarchy(type, name, argsCount, new HashSet<String>());
+    }
+
+    private static MethodDescription.InDefinedShape findMethodInHierarchy(TypeDescription type,
+                                                                         String name,
+                                                                         int argsCount,
+                                                                         Set<String> visited) {
+        if (type == null) return null;
+        String typeName;
+        try {
+            typeName = type.getName();
+        } catch (Exception e) {
+            typeName = null;
+        }
+        if (typeName != null && !visited.add(typeName)) return null;
+
+        try {
+            MethodList<MethodDescription.InDefinedShape> declared =
+                    type.getDeclaredMethods().filter(ElementMatchers.named(name).and(ElementMatchers.takesArguments(argsCount)));
+            if (!declared.isEmpty()) return declared.getOnly();
+        } catch (Exception ignored) {
+        }
+
+        try {
+            for (TypeDescription.Generic itf : type.getInterfaces()) {
+                MethodDescription.InDefinedShape m = findMethodInHierarchy(itf.asErasure(), name, argsCount, visited);
+                if (m != null) return m;
+            }
+        } catch (Exception ignored) {
+        }
+
+        try {
+            TypeDescription.Generic sc = type.getSuperClass();
+            return (sc == null) ? null : findMethodInHierarchy(sc.asErasure(), name, argsCount, visited);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private static net.bytebuddy.dynamic.DynamicType.Builder<?> instrumentHttpEntity(net.bytebuddy.dynamic.DynamicType.Builder<?> b,
+                                                                                    TypeDescription td,
+                                                                                    String apachePrefix) {
+        try {
+            MethodDescription.InDefinedShape mGetContent = findMethodInHierarchy(td, "getContent", 0);
+            MethodDescription.InDefinedShape mGetContentType = findMethodInHierarchy(td, "getContentType", 0);
+            if (mGetContent == null || mGetContentType == null) return b;
+
+            TypeDescription headerType = mGetContentType.getReturnType().asErasure();
+            MethodDescription.InDefinedShape mGetValue = findMethodInHierarchy(headerType, "getValue", 0);
+            if (mGetValue == null) return b;
+
+            return b
+                    .implement(BitDiveHttpEntityView.class)
+                    .defineMethod("bitdiveContent", InputStream.class, Visibility.PUBLIC)
+                    .intercept(MethodCall.invoke(mGetContent))
+                    .defineMethod("bitdiveContentTypeValue", String.class, Visibility.PUBLIC)
+                    .intercept(
+                            MethodCall.invoke(mGetValue)
+                                    .onMethodCall(MethodCall.invoke(mGetContentType))
+                    );
+        } catch (Exception e) {
+            return b;
         }
     }
 }

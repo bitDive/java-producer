@@ -4,21 +4,58 @@ import io.bitdive.parent.trasirovka.agent.utils.ContextManager;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.asm.Advice;
+import net.bytebuddy.description.method.MethodDescription;
+import net.bytebuddy.description.method.MethodList;
+import net.bytebuddy.description.modifier.Visibility;
+import net.bytebuddy.description.type.TypeDescription;
+import net.bytebuddy.implementation.MethodCall;
 import net.bytebuddy.matcher.ElementMatchers;
 
-import java.lang.reflect.Method;
 import java.util.Optional;
 
 import static io.bitdive.parent.message_producer.MessageService.sendMessageWebResponse;
+import static net.bytebuddy.matcher.ElementMatchers.named;
+import static net.bytebuddy.matcher.ElementMatchers.takesArguments;
 
 public class ByteBuddyAgentCatalinaResponse {
+
+    /**
+     * View injected into {@code org.apache.catalina.connector.Request} to avoid reflection in advice.
+     */
+    public interface BitDiveTomcatRequestView {
+        int bitdiveResponseStatus();
+    }
+
     public static AgentBuilder  init(AgentBuilder agentBuilder) {
         return agentBuilder
                 .type(ElementMatchers.named("org.apache.catalina.connector.Request"))
-                .transform((builder, typeDescription, classLoader, module, dd) ->
-                        builder.visit(Advice.to(CatalinaResponseInterceptor.class)
-                                .on(ElementMatchers.named("finishRequest")))
-                );
+                .transform((builder, typeDescription, classLoader, module, dd) -> {
+
+                    MethodDescription.InDefinedShape mGetResponse =
+                            findMethodInHierarchy(typeDescription, "getResponse", 0);
+                    if (mGetResponse == null) {
+                        return builder.visit(Advice.to(CatalinaResponseInterceptor.class)
+                                .on(ElementMatchers.named("finishRequest")));
+                    }
+
+                    TypeDescription respType = mGetResponse.getReturnType().asErasure();
+                    MethodDescription.InDefinedShape mGetStatus =
+                            findMethodInHierarchy(respType, "getStatus", 0);
+                    if (mGetStatus == null) {
+                        return builder.visit(Advice.to(CatalinaResponseInterceptor.class)
+                                .on(ElementMatchers.named("finishRequest")));
+                    }
+
+                    return builder
+                            .implement(BitDiveTomcatRequestView.class)
+                            .defineMethod("bitdiveResponseStatus", int.class, Visibility.PUBLIC)
+                            .intercept(
+                                    MethodCall.invoke(mGetStatus)
+                                            .onMethodCall(MethodCall.invoke(mGetResponse))
+                            )
+                            .visit(Advice.to(CatalinaResponseInterceptor.class)
+                                    .on(ElementMatchers.named("finishRequest")));
+                });
     }
 
     public static class CatalinaResponseInterceptor {
@@ -36,14 +73,10 @@ public class ByteBuddyAgentCatalinaResponse {
                     return;
                 }
 
-                Class<?> requestClass = responseObj.getClass();
-
-                Method getResponseMethod = requestClass.getMethod("getResponse");
-                Object responseInternal = getResponseMethod.invoke(responseObj);
-
-                Class<?> responseClass = responseInternal.getClass();
-                Method getStatusMethod = responseClass.getMethod("getStatus");
-                int status = (int) getStatusMethod.invoke(responseInternal);
+                int status = 0;
+                if (responseObj instanceof BitDiveTomcatRequestView) {
+                    status = ((BitDiveTomcatRequestView) responseObj).bitdiveResponseStatus();
+                }
 
                 // finalize collected request body into context
                 try {
@@ -70,6 +103,35 @@ public class ByteBuddyAgentCatalinaResponse {
                 io.bitdive.parent.trasirovka.agent.utils.RequestBodyCollector.cleanupSafely();
             }
         }
+    }
+
+    // =========================
+    // ByteBuddy helpers
+    // =========================
+
+    private static MethodDescription.InDefinedShape findMethodInHierarchy(TypeDescription type, String name, int argsCount) {
+        TypeDescription cur = type;
+        while (cur != null) {
+            try {
+                MethodList<MethodDescription.InDefinedShape> declared =
+                        cur.getDeclaredMethods().filter(named(name).and(takesArguments(argsCount)));
+                if (!declared.isEmpty()) return declared.getOnly();
+            } catch (Exception ignored) {
+            }
+
+            // interfaces
+            try {
+                for (TypeDescription.Generic itf : cur.getInterfaces()) {
+                    MethodDescription.InDefinedShape m = findMethodInHierarchy(itf.asErasure(), name, argsCount);
+                    if (m != null) return m;
+                }
+            } catch (Exception ignored) {
+            }
+
+            TypeDescription.Generic sc = cur.getSuperClass();
+            cur = (sc == null) ? null : sc.asErasure();
+        }
+        return null;
     }
 
 }

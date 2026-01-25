@@ -2,24 +2,14 @@ package io.bitdive.parent.message_producer;
 
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 
-/**
- * Облегченная конфигурация логирования для библиотеки мониторинга.
- * Полностью независима от Log4j2/Logback - не влияет на логи клиентского приложения.
- * 
- * Использует собственную легковесную систему:
- * - MonitoringFileWriter для асинхронной записи в файлы
- * - FileUploadService для отправки файлов на сервер
- */
+
 public class LibraryLoggerConfig {
 
     private static MonitoringFileWriter fileWriter;
     private static FileUploadService uploadService;
     private static MonitoringLogger logger;
 
-    /**
-     * Инициализация системы мониторинга
-     * ИСПРАВЛЕНО: предотвращение утечки памяти при повторной инициализации
-     */
+
     public static void init() {
         // Если уже инициализировано - не делаем ничего
         if (fileWriter != null) {
@@ -52,11 +42,7 @@ public class LibraryLoggerConfig {
             throw new RuntimeException("Failed to initialize monitoring logger", e);
         }
     }
-    
-    /**
-     * Внутренний метод для очистки ресурсов
-     * ИСПРАВЛЕНО: предотвращение утечки памяти
-     */
+
     private static void cleanup() {
         if (fileWriter != null) {
             try {
@@ -83,9 +69,7 @@ public class LibraryLoggerConfig {
         logger = null;
     }
 
-    /**
-     * Получить logger для класса
-     */
+
     public static MonitoringLogger getLogger(Class<?> clazz) {
         if (logger == null) {
             throw new IllegalStateException("LibraryLoggerConfig not initialized. Call init() first.");
@@ -93,10 +77,6 @@ public class LibraryLoggerConfig {
         return logger;
     }
 
-    /**
-     * Правильная остановка системы мониторинга
-     * ИСПРАВЛЕНО: использование общего метода cleanup для предотвращения дублирования кода
-     */
     public static void stopLoggerContext() {
         cleanup();
         
