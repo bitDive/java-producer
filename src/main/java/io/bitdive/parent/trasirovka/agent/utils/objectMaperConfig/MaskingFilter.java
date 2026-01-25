@@ -8,15 +8,13 @@ import com.fasterxml.jackson.databind.ser.BeanPropertyWriter;
 import com.fasterxml.jackson.databind.ser.BeanSerializerModifier;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 public class MaskingFilter extends BeanSerializerModifier {
     private final Set<String> maskedFields;
 
     public MaskingFilter(Set<String> maskedFields) {
-        this.maskedFields = maskedFields;
+        this.maskedFields = Optional.ofNullable(maskedFields).orElse(new HashSet<>());
     }
 
     @Override

@@ -31,15 +31,6 @@ public class ReflectionUtils {
 
     @Getter
     static ObjectMapper mapper;
-    
-    /**
-     * Pool of ObjectMapper instances to reduce contention in multi-threaded scenarios.
-     * Using multiple mappers instead of a single shared instance reduces lock contention
-     * on internal caches (SerializerCache, TypeFactory, AfterburnerModule).
-     */
-    private static final int MAPPER_POOL_SIZE = 10;
-    private static ObjectMapper[] mapperPool;
-    
     /**
      * A SAFE JSON parser for untrusted payloads (e.g., HTTP responses).
      * Important: must NOT have default typing enabled to avoid unsafe polymorphic deserialization.
@@ -147,32 +138,6 @@ public class ReflectionUtils {
             mapper.setDefaultTyping(builder);
         });
 
-        // Initialize mapper pool with copies to reduce contention
-        initializeMapperPool();
-    }
-
-    /**
-     * Initializes the pool of ObjectMapper instances by creating copies of the main mapper.
-     * Each copy shares the same configuration but has independent internal caches,
-     * reducing lock contention in multi-threaded scenarios.
-     */
-    private static void initializeMapperPool() {
-        mapperPool = new ObjectMapper[MAPPER_POOL_SIZE];
-        for (int i = 0; i < MAPPER_POOL_SIZE; i++) {
-            mapperPool[i] = mapper.copy();
-        }
-    }
-
-    /**
-     * Returns a random ObjectMapper from the pool to distribute load and reduce contention.
-     * Uses ThreadLocalRandom for efficient random selection without synchronization.
-     */
-    private static ObjectMapper getMapperFromPool() {
-        if (mapperPool == null || mapperPool.length == 0) {
-            return mapper; // Fallback to main mapper if pool not initialized
-        }
-        int index = java.util.concurrent.ThreadLocalRandom.current().nextInt(MAPPER_POOL_SIZE);
-        return mapperPool[index];
     }
 
     public static String objectToString(Object obj) {
@@ -180,9 +145,7 @@ public class ReflectionUtils {
             if (obj == null) {
                 return "null";
             }
-            // Use mapper from pool to reduce contention
-            ObjectMapper pooledMapper = getMapperFromPool();
-            String paramAfterSeariles = pooledMapper.writeValueAsString(obj);
+            String paramAfterSeariles = mapper.writeValueAsString(obj);
             return Optional.ofNullable(paramAfterSeariles)
                     .filter(s -> !s.isEmpty())
                     .filter(s -> !s.equals("null")).orElse("");
