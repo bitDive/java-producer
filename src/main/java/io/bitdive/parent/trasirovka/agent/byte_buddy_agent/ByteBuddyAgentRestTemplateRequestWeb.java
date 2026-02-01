@@ -14,7 +14,10 @@ import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.implementation.FieldAccessor;
 import net.bytebuddy.implementation.MethodCall;
 import net.bytebuddy.implementation.MethodDelegation;
-import net.bytebuddy.implementation.bind.annotation.*;
+import net.bytebuddy.implementation.bind.annotation.Origin;
+import net.bytebuddy.implementation.bind.annotation.RuntimeType;
+import net.bytebuddy.implementation.bind.annotation.SuperCall;
+import net.bytebuddy.implementation.bind.annotation.This;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -39,16 +42,16 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
     public interface BitDiveSpringHttpRequestView {
         String bitdiveUriString();
         String bitdiveMethodString();
-        Object bitdiveHeaders(); // фактически HttpHeaders, но как Object
+        Object bitdiveHeaders(); // фактически HttpHeaders/MultiValueMap, но как Object
     }
 
     public interface BitDiveSpringHttpResponseView {
-        int bitdiveStatusCodeValue();
         Object bitdiveHeaders();
+
+        int bitdiveStatusCodeValue(); // универсально для Spring 4/5/6
 
         byte[] bitdiveCachedBody();
         void bitdiveSetCachedBody(byte[] bytes);
-
 
         InputStream bitdiveGetBody();
     }
@@ -58,13 +61,14 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
     // =========================
 
     private static final String RESPONSE_CACHED_BODY_FIELD = "bitdive$cachedBody";
-    private static final int MAX_BODY_BYTES = 2 * 1024 * 1024; // 2MB (подстрой)
+    private static final int MAX_BODY_BYTES = 2 * 1024 * 1024; // 2MB
 
     // =========================
     // Agent init
     // =========================
 
-    public static Pair<AgentBuilder,AgentBuilder> init(AgentBuilder agentBuilder , AgentBuilder agentBuilderTransform ) {
+    public static Pair<AgentBuilder, AgentBuilder> init(AgentBuilder agentBuilder,
+                                                        AgentBuilder agentBuilderTransform) {
 
         // 0) Ловим исходный body-объект из RestTemplate callback (до записи в stream)
         try {
@@ -76,33 +80,25 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
                     );
         } catch (Exception e) {
             if (LoggerStatusContent.isErrorsOrDebug()) {
-                System.err.println("RestTemplate$HttpEntityRequestCallback not found: " + e);
+                System.err.println("RestTemplate$HttpEntityRequestCallback not found/failed: " + e);
             }
         }
 
-        // 1) Response: внедряем интерфейс + поле кеша + перехватываем getBody()
+        // 1) Response: интерфейс + поле кеша + перехват getBody()
         try {
             agentBuilderTransform = agentBuilderTransform
                     .type(hasSuperType(named("org.springframework.http.client.ClientHttpResponse"))
                             .and(not(isInterface())))
                     .transform((builder, td, cl, module, dd) -> {
 
-                        MethodDescription.InDefinedShape mGetStatusCode =
-                                findMethodInHierarchy(td, "getStatusCode", 0);
                         MethodDescription.InDefinedShape mGetHeaders =
                                 findMethodInHierarchy(td, "getHeaders", 0);
                         MethodDescription.InDefinedShape mGetBody =
                                 findMethodInHierarchy(td, "getBody", 0);
 
-                        if (mGetStatusCode == null || mGetHeaders == null || mGetBody == null) {
-                            return builder;
-                        }
-
-                        // status.value() -> int
-                        MethodDescription.InDefinedShape mValue =
-                                findDeclaredMethod(mGetStatusCode.getReturnType().asErasure(), "value", 0);
-
-                        if (mValue == null) {
+                        // getStatusCode может отсутствовать только в очень старых экзотических реализациях,
+                        // но нам он теперь НЕ нужен на этапе трансформации (берём рантаймом).
+                        if (mGetHeaders == null || mGetBody == null) {
                             return builder;
                         }
 
@@ -125,22 +121,19 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
                                 .withParameters(byte[].class)
                                 .intercept(FieldAccessor.ofField(RESPONSE_CACHED_BODY_FIELD))
 
-                                // headers: return getHeaders()
+                                // headers
                                 .defineMethod("bitdiveHeaders", Object.class, Visibility.PUBLIC)
                                 .intercept(MethodCall.invoke(mGetHeaders))
 
-                                // status: return getStatusCode().value()
+                                // ✅ универсальный status-code (Spring 4/5/6)
                                 .defineMethod("bitdiveStatusCodeValue", int.class, Visibility.PUBLIC)
-                                .intercept(
-                                        MethodCall.invoke(mValue)
-                                                .onMethodCall(MethodCall.invoke(mGetStatusCode))
-                                )
+                                .intercept(MethodDelegation.to(ClientHttpResponseStatusCodeValueInterceptor.class))
 
-                                // body: return getBody()
+                                // body accessor (вызывает getBody(); может попасть в интерцептор — и это нормально)
                                 .defineMethod("bitdiveGetBody", InputStream.class, Visibility.PUBLIC)
                                 .intercept(MethodCall.invoke(mGetBody))
 
-                                // перехват getBody()
+                                // перехват getBody() для кеширования
                                 .method(is(mGetBody))
                                 .intercept(MethodDelegation.to(ClientHttpResponseGetBodyInterceptor.class));
                     });
@@ -151,7 +144,7 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
             }
         }
 
-        // 2) Request: внедряем интерфейс + перехватываем execute()
+        // 2) Request: интерфейс + перехват execute()
         try {
             agentBuilderTransform = agentBuilderTransform
                     .type(hasSuperType(named("org.springframework.http.client.ClientHttpRequest"))
@@ -160,11 +153,13 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
 
                         MethodDescription.InDefinedShape mGetURI =
                                 findMethodInHierarchy(td, "getURI", 0);
-                        // Spring 6+ may provide default HttpRequest#getMethod() and only require getMethodValue()
+
+                        // Spring 6+ may expose getMethodValue(), older: getMethod()
                         MethodDescription.InDefinedShape mGetMethodValue =
                                 findMethodInHierarchy(td, "getMethodValue", 0);
                         MethodDescription.InDefinedShape mGetMethod =
                                 (mGetMethodValue == null) ? findMethodInHierarchy(td, "getMethod", 0) : null;
+
                         MethodDescription.InDefinedShape mGetHeaders =
                                 findMethodInHierarchy(td, "getHeaders", 0);
 
@@ -172,7 +167,7 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
                             return builder;
                         }
 
-                        MethodDescription mToString;
+                        MethodDescription.InDefinedShape mToString;
                         try {
                             mToString = new MethodDescription.ForLoadedMethod(Object.class.getMethod("toString"));
                         } catch (NoSuchMethodException ex) {
@@ -183,12 +178,13 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
                             System.err.println("BitDive: instrument ClientHttpRequest: " + td.getName());
                         }
 
-                        builder = builder.implement(BitDiveSpringHttpRequestView.class)
+                        builder = builder
+                                .implement(BitDiveSpringHttpRequestView.class)
 
                                 // String bitdiveUriString() { return getURI().toString(); }
                                 .defineMethod("bitdiveUriString", String.class, Visibility.PUBLIC)
                                 .intercept(
-                                        MethodCall.invoke((MethodDescription.InDefinedShape) mToString)
+                                        MethodCall.invoke(mToString)
                                                 .onMethodCall(MethodCall.invoke(mGetURI))
                                 )
 
@@ -200,7 +196,7 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
                                 .method(named("execute").and(takesArguments(0)))
                                 .intercept(MethodDelegation.to(ResponseWeRestTemplateInterceptor.class));
 
-                        // method string: prefer getMethodValue() when present (Spring 6+)
+                        // method string
                         if (mGetMethodValue != null) {
                             builder = builder
                                     .defineMethod("bitdiveMethodString", String.class, Visibility.PUBLIC)
@@ -209,7 +205,7 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
                             builder = builder
                                     .defineMethod("bitdiveMethodString", String.class, Visibility.PUBLIC)
                                     .intercept(
-                                            MethodCall.invoke((MethodDescription.InDefinedShape) mToString)
+                                            MethodCall.invoke(mToString)
                                                     .onMethodCall(MethodCall.invoke(mGetMethod))
                                     );
                         }
@@ -223,7 +219,7 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
             }
         }
 
-        return Pair.createPair(agentBuilder,agentBuilderTransform);
+        return Pair.createPair(agentBuilder, agentBuilderTransform);
     }
 
     // =========================
@@ -250,6 +246,7 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
         private static Object extractBodyFromCallback(Object callback) {
             if (callback == null) return null;
 
+            // common fields in Spring RestTemplate internals
             Object httpEntity = getFieldValueQuietly(callback, "requestEntity");
             if (httpEntity != null) {
                 Object body = invokeMethodQuietly(httpEntity, "getBody");
@@ -259,7 +256,7 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
             Object requestBody = getFieldValueQuietly(callback, "requestBody");
             if (requestBody != null) return requestBody;
 
-            // Fallback: scan declared fields for something with getBody()
+            // fallback: scan declared fields for something with getBody()
             try {
                 Class<?> c = callback.getClass();
                 while (c != null) {
@@ -297,7 +294,6 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
         private static Object invokeMethodQuietly(Object target, String methodName) {
             try {
                 Method m = target.getClass().getMethod(methodName);
-                m.setAccessible(true);
                 return m.invoke(target);
             } catch (Exception ignored) {
                 try {
@@ -311,7 +307,74 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
         }
     }
 
+    /**
+     * Universal status code resolver:
+     * - try getRawStatusCode() first (older Spring)
+     * - else getStatusCode().value() (works for HttpStatus and HttpStatusCode)
+     */
+    public static class ClientHttpResponseStatusCodeValueInterceptor {
 
+        @RuntimeType
+        public static int intercept(@This Object self) {
+            Integer raw = invokeIntNoArgPublicFirst(self, "getRawStatusCode");
+            if (raw != null) return raw;
+
+            Object sc = invokeObjNoArgPublicFirst(self, "getStatusCode");
+            if (sc != null) {
+                Integer v = invokeIntNoArgPublicFirst(sc, "value");
+                if (v != null) return v;
+            }
+
+            return -1;
+        }
+
+        private static Object invokeObjNoArgPublicFirst(Object target, String name) {
+            try {
+                Method m = findNoArgPublicFirst(target.getClass(), name);
+                if (m == null) return null;
+                return m.invoke(target);
+            } catch (Throwable ignored) {
+                return null;
+            }
+        }
+
+        private static Integer invokeIntNoArgPublicFirst(Object target, String name) {
+            try {
+                Method m = findNoArgPublicFirst(target.getClass(), name);
+                if (m == null) return null;
+                Object r = m.invoke(target);
+                if (r instanceof Integer) return (Integer) r;
+                if (r instanceof Number) return ((Number) r).intValue();
+                return null;
+            } catch (Throwable ignored) {
+                return null;
+            }
+        }
+
+        private static Method findNoArgPublicFirst(Class<?> c, String name) {
+            try {
+                return c.getMethod(name);
+            } catch (NoSuchMethodException ignored) {
+            }
+
+            Class<?> cur = c;
+            while (cur != null) {
+                try {
+                    Method m = cur.getDeclaredMethod(name);
+                    m.setAccessible(true);
+                    return m;
+                } catch (NoSuchMethodException ignored) {
+                }
+                cur = cur.getSuperclass();
+            }
+            return null;
+        }
+    }
+
+    /**
+     * Caches body once. If maxBytes reached, continues draining the stream (discarding),
+     * to keep HTTP connection reusable.
+     */
     public static class ClientHttpResponseGetBodyInterceptor {
         @RuntimeType
         public static Object intercept(@SuperCall Callable<Object> zuper,
@@ -335,30 +398,34 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
 
             byte[] bytes;
             try (InputStream in = (InputStream) original) {
-                bytes = readUpTo(in, MAX_BODY_BYTES);
+                bytes = readUpToAndDrain(in, MAX_BODY_BYTES);
             }
 
             view.bitdiveSetCachedBody(bytes);
             return new ByteArrayInputStream(bytes);
         }
 
-        private static byte[] readUpTo(InputStream in, int maxBytes) throws Exception {
+        private static byte[] readUpToAndDrain(InputStream in, int maxBytes) throws Exception {
             ByteArrayOutputStream out = new ByteArrayOutputStream(Math.min(8192, maxBytes));
             byte[] buf = new byte[8192];
+
             int total = 0;
             int n;
+
             while ((n = in.read(buf)) != -1) {
-                int canWrite = Math.min(n, maxBytes - total);
-                if (canWrite > 0) {
-                    out.write(buf, 0, canWrite);
-                    total += canWrite;
+                if (total < maxBytes) {
+                    int canWrite = Math.min(n, maxBytes - total);
+                    if (canWrite > 0) {
+                        out.write(buf, 0, canWrite);
+                        total += canWrite;
+                    }
                 }
-                if (total >= maxBytes) break;
+                // если уже достигли лимита — просто продолжаем читать/выкидывать до EOF (drain)
             }
+
             return out.toByteArray();
         }
     }
-
 
     public static class ResponseWeRestTemplateInterceptor {
 
@@ -366,7 +433,6 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
         public static Object intercept(@Origin Method origin,
                                        @SuperCall Callable<?> zuper,
                                        @This Object request) throws Throwable {
-
 
             if (LoggerStatusContent.getEnabledProfile()) return zuper.call();
             if (ContextManager.getMessageIdQueueNew().isEmpty()) return zuper.call();
@@ -402,11 +468,7 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
                     headers = rq.bitdiveHeaders();
 
                     Object capturedBody = OutgoingRestTemplateBodyContext.getAndClear();
-                    if (capturedBody != null) {
-                        body = ReflectionUtils.objectToString(capturedBody);
-                    } else {
-                        body = "";
-                    }
+                    body = (capturedBody != null) ? ReflectionUtils.objectToString(capturedBody) : "";
 
                     if (getFirstHeader(headers, "x-BitDiv-custom-span-id") == null) {
                         successLogin = true;
@@ -431,6 +493,7 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
             } finally {
                 OutgoingRestTemplateBodyContext.clearSafely();
 
+                // ✅ ВАЖНО: никаких return в finally
                 if (!successLogin) {
                     // ничего не отправляем
                 } else {
@@ -445,7 +508,7 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
                             responseHeaders = resp.bitdiveHeaders();
 
                             // форсим кеширование тела
-                            try (InputStream ignored = resp.bitdiveGetBody()) {
+                            try (InputStream ignored = (InputStream) resp.bitdiveGetBody()) {
                                 // no-op
                             } catch (Exception ignored) {
                             }
@@ -490,13 +553,14 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
             }
         }
 
+
         private static String safeString(String s) {
             return s == null ? "" : s;
         }
     }
 
     // =========================
-    // Headers helpers (NO Spring, NO reflection)
+    // Headers helpers (NO Spring deps)
     // =========================
 
     @SuppressWarnings("unchecked")
@@ -506,7 +570,6 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
 
             Object v = map.get(key);
             if (v == null) {
-                // если вдруг ключи не case-insensitive — попробуем найти руками
                 for (Map.Entry<Object, Object> e : map.entrySet()) {
                     if (e.getKey() != null && key.equalsIgnoreCase(String.valueOf(e.getKey()))) {
                         v = e.getValue();
@@ -535,17 +598,16 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
                 if (v instanceof List) {
                     list = (List<Object>) v;
                 } else if (v == null) {
-                    list = new ArrayList<Object>(1);
+                    list = new ArrayList<>(1);
                     map.put(key, list);
                 } else {
-                    // странный формат — приведём к списку
-                    list = new ArrayList<Object>(2);
+                    list = new ArrayList<>(2);
                     list.add(v);
                     map.put(key, list);
                 }
                 list.add(value);
             } catch (Exception ignored) {
-                // best-effort: если headers immutable — просто не добавим
+                // headers могут быть immutable
             }
         }
     }
@@ -582,27 +644,27 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
     }
 
     // =========================
-    // ByteBuddy helpers (old API friendly)
+    // ByteBuddy helpers
     // =========================
 
     private static MethodDescription.InDefinedShape findMethodInHierarchy(TypeDescription type, String name, int argsCount) {
-        return findMethodInHierarchy(type, name, argsCount, new HashSet<String>());
+        return findMethodInHierarchy(type, name, argsCount, new HashSet<>());
     }
 
     /**
      * Finds a method by name/arity walking:
-     * - current type declared methods
-     * - all implemented interfaces (recursively)
-     * - superclass chain (recursively)
+     * - declared methods
+     * - interfaces (recursively)
+     * - superclass chain
      *
-     * Why: in Spring 6+ some methods (e.g. HttpRequest#getMethod()) may be DEFAULT interface methods,
-     * so concrete ClientHttpRequest implementations may not declare them.
+     * Needed because in Spring 6+ some methods can be DEFAULT interface methods.
      */
     private static MethodDescription.InDefinedShape findMethodInHierarchy(TypeDescription type,
-                                                                         String name,
-                                                                         int argsCount,
-                                                                         Set<String> visited) {
+                                                                          String name,
+                                                                          int argsCount,
+                                                                          Set<String> visited) {
         if (type == null) return null;
+
         String typeName;
         try {
             typeName = type.getName();
@@ -636,15 +698,5 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
         } catch (Exception ignored) {
             return null;
         }
-    }
-
-    private static MethodDescription.InDefinedShape findDeclaredMethod(TypeDescription type, String name, int argsCount) {
-        try {
-            MethodList<MethodDescription.InDefinedShape> declared =
-                    type.getDeclaredMethods().filter(named(name).and(takesArguments(argsCount)));
-            if (!declared.isEmpty()) return declared.getOnly();
-        } catch (Exception ignored) {
-        }
-        return null;
     }
 }

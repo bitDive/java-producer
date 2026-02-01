@@ -42,28 +42,6 @@ public final class HttpsURLConnectionCustom {
         return protocol + "://" + host + (port == -1 ? "" : ":" + port);
     }
 
-    public static void sentApplicationEnvironment(ApplicationEnvironment applicationEnvironment) {
-        String endpoint =
-                trimTrailingSlash(
-                        normalizeUrl(
-                                YamlParserConfig.getProfilingConfig()
-                                        .getMonitoring()
-                                        .getSendFiles()
-                                        .getServerConsumer()
-                                        .getUrl()
-                        )
-                )
-                        + "/monitoring-api/service/applicationStartEnvironment";
-
-        try {
-            postJson(endpoint, applicationEnvironment, ResponseHandlers.noBody());
-        } catch (AccessControlException e) {
-            System.out.println("Error of read config from server bitDive " + endpoint + " Access Control Exception");
-            throw new RuntimeException(e);
-        } catch (Exception e) {
-            throw new RuntimeException("Error of read config from server bitDive " + endpoint, e);
-        }
-    }
 
     public static ProfilingConfig requestConfigForService(ConfigForServiceDTO configForServiceDTO) {
         String endpoint = trimTrailingSlash(configForServiceDTO.getServerUrl())
@@ -71,7 +49,11 @@ public final class HttpsURLConnectionCustom {
 
         try {
             return postJson(endpoint, configForServiceDTO,
-                    ResponseHandlers.json(new TypeReference<ProfilingConfig>() {}));
+                    ResponseHandlers.json(new TypeReference<ProfilingConfig>() {
+                    }),
+                    configForServiceDTO.getToken(),
+                    configForServiceDTO.getModuleName()
+            );
         } catch (AccessControlException e) {
             System.out.println("Error of read config from server bitDive " + endpoint + " Access Control Exception");
             throw new RuntimeException(e);
@@ -80,11 +62,11 @@ public final class HttpsURLConnectionCustom {
         }
     }
 
-    private static <T> T postJson(String endpoint, Object requestDto, ResponseHandler<T> onSuccess) throws IOException {
+    private static <T> T postJson(String endpoint, Object requestDto, ResponseHandler<T> onSuccess, String token , String moduleName) throws IOException {
         HttpURLConnection conn = null;
         try {
             conn = open(endpoint);
-            configure(conn);
+            configure(conn,token,moduleName);
 
             byte[] body = MAPPER.writeValueAsBytes(requestDto);
 
@@ -135,7 +117,7 @@ public final class HttpsURLConnectionCustom {
         return (HttpURLConnection) uc;
     }
 
-    private static void configure(HttpURLConnection conn) throws IOException {
+    private static void configure(HttpURLConnection conn , String token , String moduleName) throws IOException {
         conn.setConnectTimeout(TIMEOUT_MS);
         conn.setReadTimeout(TIMEOUT_MS);
         conn.setRequestMethod("POST");
@@ -143,7 +125,9 @@ public final class HttpsURLConnectionCustom {
         conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
         conn.setRequestProperty("Accept", "application/json");
 
-        // Важно: trustAll небезопасно для публичных сред — использовать только в контролируемых окружениях.
+        conn.setRequestProperty("X-BitDive-Access-Token", token);
+        conn.setRequestProperty("X-BitDive-Method-Module-Name", moduleName);
+
         if (conn instanceof HttpsURLConnection) {
             HttpsURLConnection https = (HttpsURLConnection) conn;
 

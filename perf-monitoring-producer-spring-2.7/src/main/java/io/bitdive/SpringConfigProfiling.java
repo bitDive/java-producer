@@ -56,11 +56,13 @@ public class SpringConfigProfiling {
     }
 
     @Bean
+    @Conditional(YamlParserCondition.class)
     public DumpAllSpringPropertiesRunner dumpAllSpringPropertiesRunner(ConfigurableEnvironment env){
         return new DumpAllSpringPropertiesRunner(env);
     }
 
     @Bean
+    @Conditional(YamlParserCondition.class)
     public SpringBeanTypeIndexInitializer springBeanTypeIndexInitializer(ListableBeanFactory beanFactory){
         return new SpringBeanTypeIndexInitializer(beanFactory);
     }
