@@ -56,8 +56,10 @@ public final class HttpsURLConnectionCustom {
             );
         } catch (AccessControlException e) {
             System.out.println("Error of read config from server bitDive " + endpoint + " Access Control Exception");
+            YamlParserConfig.setWork(false);
             throw new RuntimeException(e);
         } catch (Exception e) {
+            YamlParserConfig.setWork(false);
             throw new RuntimeException("Error of read config from server bitDive " + endpoint, e);
         }
     }
