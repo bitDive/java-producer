@@ -3,16 +3,15 @@ package io.bitdive.parent.trasirovka.agent.byte_buddy_agent;
 import com.github.f4b6a3.uuid.UuidCreator;
 import io.bitdive.parent.trasirovka.agent.utils.ContextManager;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
+import io.bitdive.parent.trasirovka.agent.utils.OutgoingFeignBodyContext;
 import io.bitdive.parent.trasirovka.agent.utils.ReflectionUtils;
 import net.bytebuddy.agent.builder.AgentBuilder;
-import net.bytebuddy.agent.builder.ResettableClassFileTransformer;
 import net.bytebuddy.implementation.MethodDelegation;
 import net.bytebuddy.implementation.bind.annotation.*;
 import net.bytebuddy.matcher.ElementMatchers;
 import org.apache.commons.io.IOUtils;
 
 import java.io.InputStream;
-import java.lang.instrument.Instrumentation;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.charset.Charset;
@@ -24,8 +23,8 @@ import java.util.Map;
 import java.util.concurrent.Callable;
 
 import static io.bitdive.parent.message_producer.MessageService.sendMessageRequestUrl;
-import static io.bitdive.parent.trasirovka.agent.utils.DataUtils.getaNullThrowable;
 import static io.bitdive.parent.trasirovka.agent.utils.RestUtils.normalizeResponseBodyBytes;
+import static io.bitdive.parent.trasirovka.agent.utils.RestUtils.normalizeRequestBody;
 
 public class ByteBuddyAgentFeignRequestWeb {
     public static AgentBuilder  init(AgentBuilder agentBuilder) {
@@ -49,14 +48,21 @@ public class ByteBuddyAgentFeignRequestWeb {
     public static class FeignClientInterceptor {
 
         @RuntimeType
+        @SuppressWarnings("unchecked")
         public static Object intercept(@SuperCall Callable<Object> zuper,
                                        @SuperMethod Method superMethod,
                                        @This Object proxy,
                                        @AllArguments Object args[]) throws Throwable {
 
-            if (LoggerStatusContent.getEnabledProfile()) return zuper.call();
+            if (LoggerStatusContent.getEnabledProfile()) {
+                OutgoingFeignBodyContext.clearSafely();
+                return zuper.call();
+            }
 
-            if (ContextManager.getMessageIdQueueNew().isEmpty()) return zuper.call();
+            if (ContextManager.getMessageIdQueueNew().isEmpty()) {
+                OutgoingFeignBodyContext.clearSafely();
+                return zuper.call();
+            }
             Object retVal = null;
             Throwable thrown = null;
 
@@ -67,8 +73,9 @@ public class ByteBuddyAgentFeignRequestWeb {
             String url = null;
             String httpMethod = null;
             Map<String, Collection<String>> headers = null;
-            byte[] body = null;
+            byte[] requestBodyBytes = null;
             Charset charset = null;
+            Object capturedBodyObj = null;
 
             String responseStatus = null;
             Map<String, Collection<String>> responseHeaders = null;
@@ -96,9 +103,12 @@ public class ByteBuddyAgentFeignRequestWeb {
                 Object httpMethodEnum = httpMethodMethod.invoke(request);
                 httpMethod = httpMethodEnum.toString();
                 headers = new HashMap<>((Map<String, Collection<String>>) headersMethod.invoke(request));
-                body = (byte[]) bodyMethod.invoke(request);
+                requestBodyBytes = (byte[]) bodyMethod.invoke(request);
                 charset = (Charset) charsetMethod.invoke(request);
                 Object requestTemplate = requestTemplateMethod.invoke(request);
+
+                // Original DTO body (captured in Encoder.encode(...) earlier on the same thread)
+                capturedBodyObj = OutgoingFeignBodyContext.pop();
 
                 if (headers.get("x-BitDiv-custom-span-id") == null) {
                     successLogin = true;
@@ -126,7 +136,7 @@ public class ByteBuddyAgentFeignRequestWeb {
                             httpMethodEnum, // HttpMethod
                             url,
                             headers,
-                            body,
+                            requestBodyBytes,
                             charset,
                             requestTemplate);
 
@@ -216,7 +226,9 @@ public class ByteBuddyAgentFeignRequestWeb {
                                     url,
                                     httpMethod,
                                     ReflectionUtils.objectToString(headers),
-                                    normalizeResponseBodyBytes(body, headers, charset),
+                                    (capturedBodyObj != null
+                                            ? normalizeRequestBody(capturedBodyObj)
+                                            : normalizeResponseBodyBytes(requestBodyBytes, headers, charset)),
                                     responseStatus,
                                     ReflectionUtils.objectToString(responseHeaders),
                                     responseBody,
@@ -231,6 +243,7 @@ public class ByteBuddyAgentFeignRequestWeb {
                         }
                     }
                 }
+                OutgoingFeignBodyContext.clearSafely();
             }
             return retVal;
         }

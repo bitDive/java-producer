@@ -47,7 +47,9 @@ public class MonitoringStarting {
                 agentStandardRetransformation=retPair.getVal();
 
                 agentStandard = ByteBuddyAgentCatalinaResponse.init(agentStandard);
+                agentStandard = ByteBuddyAgentFeignEncoderRequestBody.init(agentStandard);
                 agentStandard = ByteBuddyAgentFeignRequestWeb.init(agentStandard);
+                agentStandardRetransformation = ByteBuddyAgentFeignEncoderRequestBody.init(agentStandardRetransformation);
 
                 agentStandardRetransformation = ByteBuddyAgentSqlDriver.init(agentStandardRetransformation);
                 agentStandardRetransformation = ByteBuddyAgentSqlDriver.init(agentStandardRetransformation);

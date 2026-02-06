@@ -21,9 +21,9 @@ public class DumpAllSpringPropertiesRunner implements ApplicationRunner {
         this.env = env;
     }
 
-    private static final Pattern SENSITIVE =
-            Pattern.compile(".*(password|passwd|secret|token|apikey|api_key|private|key|jwt).*",
-                    Pattern.CASE_INSENSITIVE);
+    private static final Pattern SENSITIVE = Pattern.compile(
+            "(?i)(?:^|[._-])(?:password|passwd|secret|token|api[_-]?key|jwt|private[_-]?key)(?:$|[._-])"
+    );
 
     private static final List<String> ignoreEnv=Arrays.asList("Path","java.class.path","java.library.path");
 
@@ -62,7 +62,7 @@ public class DumpAllSpringPropertiesRunner implements ApplicationRunner {
 
     private String maskIfSensitive(String key, String value) {
         if (value == null) return "null";
-        if (SENSITIVE.matcher(key).matches()) return "******";
+        if (key != null && SENSITIVE.matcher(key).find()) return "******";
         return value;
     }
 }
