@@ -1,9 +1,12 @@
 package io.bitdive.parent.message_producer;
 
+import com.github.f4b6a3.uuid.UuidCreator;
 import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import io.bitdive.parent.trasirovka.agent.utils.MessageTypeEnum;
+import io.bitdive.parent.trasirovka.agent.utils.ReflectionUtils;
 
+import java.lang.reflect.Method;
 import java.net.URI;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
@@ -12,6 +15,7 @@ import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Optional;
 
+import static io.bitdive.parent.trasirovka.agent.utils.DataUtils.paramConvert;
 
 
 public class MessageService {
@@ -288,6 +292,31 @@ public class MessageService {
                 parentMessageId,
                 YamlParserConfig.getLibraryVersion(),
                 serviceCallId
+        ));
+    }
+
+    // NowRandomSpyAgent
+    public static void sendMessageRandomValues(String parentMessage, String traceId, String spanId,
+                                               Object[] args, Object  methodReturn, Object errorMessage ,
+                                               String className, String methodName , Method method
+    ) {
+        sendMessage(buildMessage(
+                MessageTypeEnum.RANDOM_VALUES.name(),
+                UuidCreator.getTimeBased().toString(),
+                parentMessage,
+                spanId,
+                traceId,
+                YamlParserConfig.getLibraryVersion(),
+                ReflectionUtils.objectToString(paramConvert(args, method)),
+                ReflectionUtils.objectToString(methodReturn),
+                ReflectionUtils.objectToString(errorMessage),
+                OffsetDateTime.now().minusNanos(10).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                OffsetDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                YamlParserConfig.getProfilingConfig().getApplication().getModuleName(),
+                YamlParserConfig.getProfilingConfig().getApplication().getServiceName(),
+                className,
+                methodName,
+                YamlParserConfig.getUUIDService()
         ));
     }
 

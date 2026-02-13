@@ -1,5 +1,6 @@
 package io.bitdive.parent.init;
 
+import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.safety_config.VaultGettingConfig;
 import io.bitdive.parent.trasirovka.agent.byte_buddy_agent.*;
 import io.bitdive.parent.trasirovka.agent.byte_buddy_agent.db.*;
@@ -9,19 +10,32 @@ import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import io.bitdive.parent.utils.Pair;
 import net.bytebuddy.agent.ByteBuddyAgent;
 import net.bytebuddy.agent.builder.AgentBuilder;
-
+import java.io.*;
 import java.lang.instrument.Instrumentation;
 import java.time.Duration;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
+import java.util.jar.JarOutputStream;
 
 import static net.bytebuddy.matcher.ElementMatchers.nameStartsWith;
 
 public class MonitoringStarting {
+
         public static void init() {
                 registerShutdownHook();
 
                 VaultGettingConfig.initVaultConnect();
                 LoggerStatusContent.initMonitoringDelay(Duration.ofSeconds(1));
                 Instrumentation instrumentation = ByteBuddyAgent.install();
+
+                File bootstrapTemp = new File(System.getProperty("java.io.tmpdir"), "bitdive-bootstrap");
+                bootstrapTemp.mkdirs();
+
+                AgentBuilder agentJavaStandard = new AgentBuilder.Default()
+                                .disableClassFormatChanges()
+                                .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
+                                .with(new AgentBuilder.InjectionStrategy.UsingInstrumentation(instrumentation, bootstrapTemp));
+
 
                 AgentBuilder agentStandard = new AgentBuilder.Default()
                                 .ignore(
@@ -80,9 +94,42 @@ public class MonitoringStarting {
 
                 ByteBuddyAgentThread.init(instrumentation);
 
+
+
+                injectIntoBootstrap(instrumentation, bootstrapTemp, NowRandomSpyCache.class);
+                agentJavaStandard=NowRandomSpyAgent.init(agentJavaStandard);
+
+                agentJavaStandard.installOn(instrumentation);
                 agentStandard.installOn(instrumentation);
                 agentStandardRetransformation.installOn(instrumentation);
 
+        }
+
+        /**
+         * Инжектит класс в bootstrap classloader через {@link Instrumentation#appendToBootstrapClassLoaderSearch}.
+         * Создаёт временный JAR с байткодом класса и добавляет его в bootstrap classpath.
+         */
+        private static void injectIntoBootstrap(Instrumentation instrumentation, File tempDir, Class<?> clazz) {
+                String classResource = clazz.getName().replace('.', '/') + ".class";
+                try {
+                        File tempJar = File.createTempFile("bitdive-bootstrap-", ".jar", tempDir);
+                        tempJar.deleteOnExit();
+                        try (JarOutputStream jos = new JarOutputStream(new FileOutputStream(tempJar))) {
+                                jos.putNextEntry(new JarEntry(classResource));
+                                try (InputStream is = clazz.getClassLoader().getResourceAsStream(classResource)) {
+                                        if (is == null) throw new FileNotFoundException(classResource);
+                                        byte[] buf = new byte[4096];
+                                        int n;
+                                        while ((n = is.read(buf)) != -1) {
+                                                jos.write(buf, 0, n);
+                                        }
+                                }
+                                jos.closeEntry();
+                        }
+                        instrumentation.appendToBootstrapClassLoaderSearch(new JarFile(tempJar));
+                } catch (IOException e) {
+                        System.err.println("[BitDive] Failed to inject " + clazz.getName() + " into bootstrap CL: " + e);
+                }
         }
 
         /**

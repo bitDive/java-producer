@@ -4,7 +4,7 @@
   <groupId>io.bitdive</groupId>
   <artifactId>java-producer-parent</artifactId>
   <name>parent-producer</name>
-  <version>1.3.9-SNAPSHOT</version>
+  <version>1.3.10-SNAPSHOT</version>
   <description>library is a common module for the system for collecting profiling information</description>
   <url>bitdive.io</url>
   <developers>
@@ -97,7 +97,6 @@
                   <include>com.fasterxml.jackson.module:*</include>
                   <include>org.yaml:snakeyaml</include>
                   <include>com.bettercloud:vault-java-driver</include>
-                  <include>org.bouncycastle:*</include>
                   <include>net.bytebuddy:*</include>
                   <include>org.aspectj:aspectjweaver</include>
                   <include>commons-io:commons-io</include>
@@ -119,10 +118,6 @@
                 <relocation>
                   <pattern>com.bettercloud.vault</pattern>
                   <shadedPattern>io.bitdive.shaded.com.bettercloud.vault</shadedPattern>
-                </relocation>
-                <relocation>
-                  <pattern>org.bouncycastle</pattern>
-                  <shadedPattern>io.bitdive.shaded.org.bouncycastle</shadedPattern>
                 </relocation>
                 <relocation>
                   <pattern>net.bytebuddy</pattern>
@@ -182,6 +177,18 @@
   </build>
   <dependencies>
     <dependency>
+      <groupId>org.bouncycastle</groupId>
+      <artifactId>bcprov-jdk18on</artifactId>
+      <version>1.79</version>
+      <scope>compile</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.bouncycastle</groupId>
+      <artifactId>bcpkix-jdk18on</artifactId>
+      <version>1.79</version>
+      <scope>compile</scope>
+    </dependency>
+    <dependency>
       <groupId>org.projectlombok</groupId>
       <artifactId>lombok</artifactId>
       <version>1.18.30</version>
@@ -189,8 +196,8 @@
     </dependency>
   </dependencies>
   <properties>
-    <maven.compiler.target>1.8</maven.compiler.target>
     <maven.compiler.source>1.8</maven.compiler.source>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <maven.compiler.target>1.8</maven.compiler.target>
   </properties>
 </project>

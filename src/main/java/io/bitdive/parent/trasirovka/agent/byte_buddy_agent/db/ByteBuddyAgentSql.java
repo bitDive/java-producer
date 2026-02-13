@@ -104,7 +104,6 @@ public class ByteBuddyAgentSql {
             try {
                 if (!context.flagNoMonitoring && !ContextManager.isMessageIdQueueEmpty()) {
 
-                    System.err.println(returnValue);
                     sendMessageDBEnd(
                             context.UUIDMessage,
                             context.traceId,

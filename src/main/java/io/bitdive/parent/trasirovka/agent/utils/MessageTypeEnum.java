@@ -31,4 +31,6 @@ public enum MessageTypeEnum {
 
     SOAP_START,
     SOAP_END,
+
+    RANDOM_VALUES
 }

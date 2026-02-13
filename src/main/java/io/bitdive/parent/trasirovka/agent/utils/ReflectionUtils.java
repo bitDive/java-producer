@@ -114,6 +114,7 @@ public class ReflectionUtils {
         mapper.registerModule(new ThrowableSerializerModule());
 
         mapper.registerModule(new FlowDataToPlaceholderModule());
+        mapper.registerModule(new BitDiveClockModule());
 
         mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         mapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
