@@ -1,6 +1,7 @@
 package io.bitdive.parent.trasirovka.agent.utils;
 
 import com.thoughtworks.paranamer.BytecodeReadingParanamer;
+import io.bitdive.core.dto.ParamMethod;
 import io.bitdive.parent.anotations.NotMonitoringParamsClass;
 import io.bitdive.parent.parserConfig.YamlParserConfig;
 import org.apache.commons.lang3.ObjectUtils;

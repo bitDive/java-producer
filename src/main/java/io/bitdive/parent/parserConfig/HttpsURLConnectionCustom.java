@@ -3,7 +3,7 @@ package io.bitdive.parent.parserConfig;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.bitdive.parent.dto.ApplicationEnvironment;
+import io.bitdive.core.parserConfig.ConfigForService;
 import io.bitdive.parent.safety_config.SSLContextCustomBitDive;
 
 import javax.net.ssl.HostnameVerifier;

@@ -1,8 +1,8 @@
-package io.bitdive.parent.utils;
+package io.bitdive.core.utils;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.bitdive.parent.parserConfig.ConfigForService;
-import io.bitdive.parent.parserConfig.ConfigForServiceDTO;
+import io.bitdive.core.parserConfig.ConfigForService;
+import io.bitdive.core.parserConfig.ConfigForServiceDTO;
 import org.yaml.snakeyaml.Yaml;
 
 import java.io.InputStream;

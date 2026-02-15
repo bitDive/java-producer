@@ -1,6 +1,7 @@
 package io.bitdive.parent.parserConfig;
 
 import com.github.f4b6a3.uuid.UuidCreator;
+import io.bitdive.core.parserConfig.ConfigForService;
 import io.bitdive.parent.dto.ApplicationEnvironment;
 import lombok.Getter;
 import lombok.Setter;
@@ -9,7 +10,6 @@ import org.yaml.snakeyaml.Yaml;
 
 import java.io.InputStream;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.stream.Stream;
 

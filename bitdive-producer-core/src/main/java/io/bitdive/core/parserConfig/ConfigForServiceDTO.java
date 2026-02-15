@@ -1,4 +1,4 @@
-package io.bitdive.parent.parserConfig;
+package io.bitdive.core.parserConfig;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;

@@ -9,11 +9,11 @@ import io.bitdive.shaded.com.fasterxml.jackson.databind.jsontype.impl.StdTypeRes
 import io.bitdive.jvm_metrics.GenerateJvmMetrics;
 import io.bitdive.parent.init.MonitoringStarting;
 import io.bitdive.parent.message_producer.LibraryLoggerConfig;
-import io.bitdive.parent.parserConfig.ConfigForService;
+import io.bitdive.core.parserConfig.ConfigForService;
 import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import io.bitdive.parent.trasirovka.agent.utils.ReflectionUtils;
-import io.bitdive.parent.utils.ByteBuddyConfigLoader;
+import io.bitdive.core.utils.ByteBuddyConfigLoader;
 import io.bitdive.parent.utils.LibraryVersionBitDive;
 import io.bitdive.shaded.com.fasterxml.jackson.databind.module.SimpleModule;
 import org.springframework.context.ApplicationContextInitializer;
