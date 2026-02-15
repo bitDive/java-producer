@@ -9,7 +9,7 @@ import io.bitdive.shaded.com.fasterxml.jackson.databind.jsontype.impl.StdTypeRes
 import io.bitdive.jvm_metrics.GenerateJvmMetrics;
 import io.bitdive.parent.init.MonitoringStarting;
 import io.bitdive.parent.message_producer.LibraryLoggerConfig;
-import io.bitdive.parent.parserConfig.ConfigForServiceDTO;
+import io.bitdive.parent.parserConfig.ConfigForService;
 import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import io.bitdive.parent.trasirovka.agent.utils.ReflectionUtils;
@@ -46,7 +46,7 @@ public class ByteBuddyAgentInitializer implements ApplicationContextInitializer<
                 YamlParserConfig.setWork(false);
                 return;
             }
-            ConfigForServiceDTO configForServiceDTO = ByteBuddyConfigLoader.load();
+            ConfigForService configForServiceDTO = ByteBuddyConfigLoader.load();
 
             scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
                 Thread t = new Thread(r, "minute-task");
@@ -54,7 +54,7 @@ public class ByteBuddyAgentInitializer implements ApplicationContextInitializer<
                 return t;
             });
 
-            final ConfigForServiceDTO configForServiceDTOFinal = configForServiceDTO;
+            final ConfigForService configForServiceDTOFinal = configForServiceDTO;
 
             Runnable task = () -> {
                 try {

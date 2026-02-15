@@ -34,7 +34,7 @@ public class YamlParserConfig {
     private static ApplicationEnvironment applicationEnvironment=null;
 
 
-    public static void loadConfig(ConfigForServiceDTO dto) {
+    public static void loadConfig(ConfigForService dto) {
         Yaml yaml = new Yaml();
 
         ProfilingConfig defaultConfig;

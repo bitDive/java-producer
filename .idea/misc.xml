@@ -7,6 +7,9 @@
         <option value="$PROJECT_DIR$/pom.xml" />
         <option value="$PROJECT_DIR$/perf-monitoring-producer-spring-3/pom.xml" />
         <option value="$PROJECT_DIR$/perf-monitoring-producer-spring-2.7/pom.xml" />
+        <option value="$PROJECT_DIR$/bitdive-bytebuddy-shaded/pom.xml" />
+        <option value="$PROJECT_DIR$/perf-monitoring-producer-compat/pom.xml" />
+        <option value="$PROJECT_DIR$/bitdive-producer-core/pom.xml" />
       </list>
     </option>
   </component>

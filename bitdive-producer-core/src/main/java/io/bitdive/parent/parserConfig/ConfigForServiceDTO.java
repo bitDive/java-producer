@@ -11,10 +11,11 @@ import java.util.List;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-public class ConfigForServiceDTO {
+public class ConfigForServiceDTO implements ConfigForService {
     private String moduleName;
     private String serviceName;
     private List<String> packedScanner;
     private String serverUrl;
     private String token;
 }
+

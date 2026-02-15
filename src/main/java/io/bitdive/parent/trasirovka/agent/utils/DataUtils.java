@@ -2,9 +2,7 @@ package io.bitdive.parent.trasirovka.agent.utils;
 
 import com.thoughtworks.paranamer.BytecodeReadingParanamer;
 import io.bitdive.parent.anotations.NotMonitoringParamsClass;
-import io.bitdive.parent.dto.ParamMethodDto;
 import io.bitdive.parent.parserConfig.YamlParserConfig;
-import lombok.ToString;
 import org.apache.commons.lang3.ObjectUtils;
 
 import java.lang.reflect.Array;
@@ -127,7 +125,7 @@ public class DataUtils {
         return "";
     }
 
-    public static List<ParamMethodDto> paramConvert(Object[] objects, Method method) {
+    public static List<ParamMethod> paramConvert(Object[] objects, Method method) {
 
         if (!YamlParserConfig.getProfilingConfig().getMonitoring().getMonitoringArgumentMethod()) {
             return Collections.emptyList();
@@ -154,7 +152,7 @@ public class DataUtils {
         return null;
     }
 
-    public static List<ParamMethodDto> paramConvertToMess(Object[] objects, List<String> namesParam) {
+    public static List<ParamMethod> paramConvertToMess(Object[] objects, List<String> namesParam) {
         String[] names = (namesParam == null || namesParam.isEmpty())
                 ? EMPTY_NAMES
                 : namesParam.toArray(new String[0]);
@@ -170,14 +168,14 @@ public class DataUtils {
     /**
      * Быстрый путь: meta уже содержит precomputed sensitiveByIndex.
      */
-    public static List<ParamMethodDto> paramConvertToMess(Object[] objects, ParamMeta meta) {
-        ArrayList<ParamMethodDto> bufRet = new ArrayList<ParamMethodDto>(objects.length);
+    public static List<ParamMethod> paramConvertToMess(Object[] objects, ParamMeta meta) {
+        ArrayList<ParamMethod> bufRet = new ArrayList<ParamMethod>(objects.length);
 
         for (int index = 0; index < objects.length; index++) {
             Object object = objects[index];
 
             if (object == null) {
-                bufRet.add(new ParamMethodDto(index, "null val", ""));
+                bufRet.add(new ParamMethod(index, "null val", ""));
                 continue;
             }
 
@@ -186,13 +184,13 @@ public class DataUtils {
             // 1) Если класс помечен как "не мониторить", отдаём заглушку и выходим
             NotMonitoringParamsClass notMonitoringClass = objectClass.getAnnotation(NotMonitoringParamsClass.class);
             if (notMonitoringClass != null) {
-                bufRet.add(new ParamMethodDto(index, objectClass.getName(), notMonitoringClass.value()));
+                bufRet.add(new ParamMethod(index, objectClass.getName(), notMonitoringClass.value()));
                 continue;
             }
 
             // 2) Маскирование ТОЛЬКО для простых типов и контейнеров простых значений
             if (meta != null && meta.isSensitive(index) && isSimpleLikeOrContainerOfSimple(object)) {
-                bufRet.add(new ParamMethodDto(index, objectClass.getName(), maskedPlaceholder(object)));
+                bufRet.add(new ParamMethod(index, objectClass.getName(), maskedPlaceholder(object)));
                 continue;
             }
 
@@ -220,7 +218,7 @@ public class DataUtils {
                 bufVal = object;
             }
 
-            bufRet.add(new ParamMethodDto(index, objectClass.getName(), bufVal));
+            bufRet.add(new ParamMethod(index, objectClass.getName(), bufVal));
         }
 
         return bufRet;

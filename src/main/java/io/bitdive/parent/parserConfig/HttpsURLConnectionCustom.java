@@ -43,7 +43,7 @@ public final class HttpsURLConnectionCustom {
     }
 
 
-    public static ProfilingConfig requestConfigForService(ConfigForServiceDTO configForServiceDTO) {
+    public static ProfilingConfig requestConfigForService(ConfigForService configForServiceDTO) {
         String endpoint = trimTrailingSlash(configForServiceDTO.getServerUrl())
                 + "/monitoring-api/service/serviceConfiguration/getConfigForService";
 
