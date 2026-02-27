@@ -90,16 +90,18 @@ public class MonitoringStarting {
                 agentStandardRetransformation = ByteBuddyCachedOpenSearchResponse.init(agentStandardRetransformation);
                 agentStandardRetransformation = ByteBuddyCachedOpenSearchReqest.init(agentStandardRetransformation);
 
-                agentStandardRetransformation = ByteBuddyAgentSoap.init(agentStandardRetransformation);
+                AgentBuilder agentStandardRetransformationSpec = ByteBuddyAgentSoap.init();
 
                 ByteBuddyAgentThread.init(instrumentation);
 
 
 
                 injectIntoBootstrap(instrumentation, bootstrapTemp, NowRandomSpyCache.class);
-                agentJavaStandard=NowRandomSpyAgent.init(agentJavaStandard);
 
+                agentJavaStandard=NowRandomSpyAgent.init(agentJavaStandard);
                 agentJavaStandard.installOn(instrumentation);
+                agentStandardRetransformationSpec.installOn(instrumentation);
+                agentStandard.installOn(instrumentation);
                 agentStandard.installOn(instrumentation);
                 agentStandardRetransformation.installOn(instrumentation);
 

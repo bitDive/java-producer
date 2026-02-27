@@ -125,6 +125,7 @@ public class MessageService {
                                             String traceId,
                                             String spanId,
                                             String endpointUrl,
+                                            String className,
                                             String operation,
                                             String soapRequestBody,
                                             OffsetDateTime dateStart,
@@ -140,6 +141,7 @@ public class MessageService {
                 traceId,                                   // 2
                 spanId,                                    // 3
                 sanitizeUrl(Optional.ofNullable(endpointUrl).orElse("")), // 4
+                className,
                 operation,
                 Optional.ofNullable(soapRequestBody).orElse(""),          // 5
                 dateStart.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME), // 6

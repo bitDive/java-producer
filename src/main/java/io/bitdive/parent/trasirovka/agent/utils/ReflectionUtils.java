@@ -32,6 +32,11 @@ public class ReflectionUtils {
     @Getter
     static ObjectMapper mapper;
     /**
+     * Mapper, используемый для сериализации ключей Map (fieldName) в {@link DefaultObjectKeySerializer}.
+     * Отделён от основного {@link #mapper}, чтобы избежать рекурсии при сериализации ключей.
+     */
+    static ObjectMapper keyMapper;
+    /**
      * A SAFE JSON parser for untrusted payloads (e.g., HTTP responses).
      * Important: must NOT have default typing enabled to avoid unsafe polymorphic deserialization.
      */
@@ -139,6 +144,16 @@ public class ReflectionUtils {
             mapper.setDefaultTyping(builder);
         });
 
+        // Создаём отдельный mapper для ключей, копируя конфигурацию основного mapper'а.
+        // Это позволяет сериализовать объект-ключ в JSON-строку с теми же модулями/typing,
+        // но без риска рекурсивного вызова key-serializer.
+        keyMapper = mapper.copy();
+
+        // Регистрируем универсальный сериализатор ключей для любых Object-ключей Map
+        SimpleModule keyModule = new SimpleModule();
+        keyModule.addKeySerializer(Object.class, new DefaultObjectKeySerializer());
+        mapper.registerModule(keyModule);
+
     }
 
     public static String objectToString(Object obj) {
@@ -169,6 +184,27 @@ public class ReflectionUtils {
             }
         } catch (Exception e) {
             return "[Error: " + e.getMessage() + "]";
+        }
+    }
+
+    /**
+     * Универсальная сериализация объекта-ключа Map в строку.
+     * Использует специализированный {@link #keyMapper}, чтобы:
+     * - не триггерить key-serializer рекурсивно;
+     * - при этом наследовать конфигурацию основного mapper'а (модули, typing и т.д.).
+     */
+    public static String objectToStringForKey(Object obj) {
+        if (obj == null) {
+            return "null";
+        }
+        try {
+            ObjectMapper m = (keyMapper != null) ? keyMapper : mapper;
+            String paramAfterSeariles = m.writeValueAsString(obj);
+            return Optional.ofNullable(paramAfterSeariles)
+                    .filter(s -> !s.isEmpty())
+                    .filter(s -> !s.equals("null")).orElse("");
+        } catch (Exception e) {
+            return "[KeyError: " + e.getMessage() + "]";
         }
     }
 

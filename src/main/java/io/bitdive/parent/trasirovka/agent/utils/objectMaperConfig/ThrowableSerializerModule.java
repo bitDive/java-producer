@@ -106,10 +106,10 @@ public class ThrowableSerializerModule extends SimpleModule {
 
                     // 2) поля через reflection (только НЕ-JDK)
                     Set<String> written = new HashSet<>();
-                    serializeNonJdkFields(t, gen, written);
+                    serializeNonJdkFields(t, gen, serializers, written);
 
                     // 3) добор через safe-getters (публичные no-arg get*/is*)
-                    serializeSafeGetters(t, gen, written);
+                    serializeSafeGetters(t, gen, serializers, written);
 
                     // 4) cause рекурсивно
                     Throwable cause = t.getCause();
@@ -127,7 +127,7 @@ public class ThrowableSerializerModule extends SimpleModule {
                     }
                 }
 
-                private void serializeNonJdkFields(Throwable throwable, JsonGenerator gen, Set<String> written) throws IOException {
+                private void serializeNonJdkFields(Throwable throwable, JsonGenerator gen, SerializerProvider serializers, Set<String> written) throws IOException {
                     for (Class<?> currentClass = throwable.getClass();
                          currentClass != null && Throwable.class.isAssignableFrom(currentClass);
                          currentClass = currentClass.getSuperclass()) {
@@ -158,17 +158,16 @@ public class ThrowableSerializerModule extends SimpleModule {
                             Object value = tryReadFieldValue(field, throwable);
                             if (value == null) {
                                 // если поле не удалось — его может “добрать” getter
-                                written.remove(fieldName); // разрешаем safe-getter записать такое же имя
+                                written.remove(fieldName);
                                 continue;
                             }
-
                             gen.writeFieldName(fieldName);
-                            serializeFieldValue(value, gen);
+                            serializeFieldValue(value, gen, serializers);
                         }
                     }
                 }
 
-                private void serializeSafeGetters(Throwable t, JsonGenerator gen, Set<String> written) throws IOException {
+                private void serializeSafeGetters(Throwable t, JsonGenerator gen, SerializerProvider serializers, Set<String> written) throws IOException {
                     // Берем public методы: это безопаснее с точки зрения модулей
                     Method[] methods = t.getClass().getMethods();
 
@@ -215,7 +214,7 @@ public class ThrowableSerializerModule extends SimpleModule {
                         }
 
                         gen.writeFieldName(prop);
-                        serializeFieldValue(value, gen);
+                        serializeFieldValue(value, gen, serializers);
 
                         // защита от слишком болтливых классов
                         emitted++;
@@ -293,7 +292,12 @@ public class ThrowableSerializerModule extends SimpleModule {
                     }
                 }
 
-                private void serializeFieldValue(Object value, JsonGenerator gen) throws IOException {
+                /**
+                 * Сериализует значение поля ошибки первого уровня.
+                 * Примитивы и строки — как есть; сложные объекты (POJO, например faultInfo/UException) —
+                 * вложенным JSON через SerializerProvider, чтобы записались все их поля.
+                 */
+                private void serializeFieldValue(Object value, JsonGenerator gen, SerializerProvider serializers) throws IOException {
                     if (value == null) {
                         gen.writeNull();
                     } else if (value instanceof String) {
@@ -303,11 +307,18 @@ public class ThrowableSerializerModule extends SimpleModule {
                     } else if (value instanceof Enum) {
                         gen.writeString(((Enum<?>) value).name());
                     } else if (value instanceof byte[]) {
-                        // чтобы не писать мегабайты бинаря (responseBody бывает byte[])
                         gen.writeString("byte[" + ((byte[]) value).length + "]");
+                    } else if (value instanceof Throwable) {
+                        // вложенная ошибка — кратко, без бесконечной рекурсии
+                        String msg = ((Throwable) value).getMessage();
+                        gen.writeString(((Throwable) value).getClass().getName() + (msg != null ? (": " + truncate(msg, 200)) : ""));
                     } else {
-                        String strValue = String.valueOf(value);
-                        gen.writeString(truncate(strValue, 500));
+                        // Нестандартные классы — через сериализатор провайдера (все ваши правила, модули, модификаторы)
+                        try {
+                            serializers.defaultSerializeValue(value, gen);
+                        } catch (Throwable ignored) {
+                            gen.writeString(truncate(String.valueOf(value), 500));
+                        }
                     }
                 }
 
