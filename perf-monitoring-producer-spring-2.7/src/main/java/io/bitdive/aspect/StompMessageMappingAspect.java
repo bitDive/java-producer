@@ -70,7 +70,7 @@ public class StompMessageMappingAspect {
                     OffsetDateTime.now(),
                     destination,
                     ReflectionUtils.objectToString(paramConvert(joinPoint.getArgs(), methodSig.getMethod())),
-                    getaNullThrowable(thrown),
+                    ReflectionUtils.objectToString(thrown),
                     true,
                     ContextManager.getMethodInpointName(),
                     ContextManager.getMessageInpointId(),

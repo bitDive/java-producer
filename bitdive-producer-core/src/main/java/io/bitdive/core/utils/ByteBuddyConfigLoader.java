@@ -1,15 +1,21 @@
-package io.bitdive.parent.utils;
+package io.bitdive.core.utils;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.bitdive.parent.parserConfig.ConfigForServiceDTO;
+import io.bitdive.core.parserConfig.ConfigForService;
+import io.bitdive.core.parserConfig.ConfigForServiceDTO;
 import org.yaml.snakeyaml.Yaml;
 
 import java.io.InputStream;
 import java.util.Map;
 
+/**
+ * Loads {@link ConfigForServiceDTO} from classpath YAML.
+ *
+ * <p>This class lives in the core artifact and may be shaded by {@code java-producer-parent}.</p>
+ */
 public class ByteBuddyConfigLoader {
 
-    public static ConfigForServiceDTO load() {
+    public static ConfigForService load() {
         try {
             return readYaml();
         } catch (Exception e) {
@@ -17,6 +23,7 @@ public class ByteBuddyConfigLoader {
         }
     }
 
+    @SuppressWarnings("unchecked")
     private static ConfigForServiceDTO readYaml() {
         try (InputStream in = ByteBuddyConfigLoader.class
                 .getClassLoader()
@@ -39,3 +46,4 @@ public class ByteBuddyConfigLoader {
         }
     }
 }
+

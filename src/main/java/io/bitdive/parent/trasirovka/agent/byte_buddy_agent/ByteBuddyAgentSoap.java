@@ -18,26 +18,13 @@ import java.time.OffsetDateTime;
 
 import static io.bitdive.parent.message_producer.MessageService.sendMessageSOAPEnd;
 import static io.bitdive.parent.message_producer.MessageService.sendMessageSOAPStart;
+import static io.bitdive.parent.trasirovka.agent.utils.DataUtils.paramConvert;
 
 public class ByteBuddyAgentSoap {
 
 
-    public static final String[] SAAJ_CONNECTION_CLASS = {
-            "jakarta.xml.soap.SOAPConnection",
-            "javax.xml.soap.SOAPConnection"
-    };
 
-    public static final String[] SOAP_MESSAGE_CLASS = {
-            "jakarta.xml.soap.SOAPMessage",
-            "javax.xml.soap.SOAPMessage"
-    };
-
-    public static ResettableClassFileTransformer init(Instrumentation inst) {
-
-        ElementMatcher.Junction<TypeDescription> saajMatcher = ElementMatchers.none();
-        for (String c : SAAJ_CONNECTION_CLASS) {
-            saajMatcher = saajMatcher.or(ElementMatchers.hasSuperType(ElementMatchers.named(c)));
-        }
+    public static AgentBuilder init()  {
 
         return new AgentBuilder.Default()
                 .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
@@ -63,7 +50,7 @@ public class ByteBuddyAgentSoap {
                         b.visit(Advice.to(CxfAdvice.class)
                                 .on(ElementMatchers.named("invoke"))))
 
-                .installOn(inst);
+                ;
     }
 
     /* ------------------------------------------------------------------ */
@@ -82,7 +69,8 @@ public class ByteBuddyAgentSoap {
             ctx.spanId = ContextManager.getSpanId();
 
             String operation = m.getName();
-            String soapRequest = ReflectionUtils.objectToString(args);
+            String className = m.getDeclaringClass().getName();
+            String soapRequest = ReflectionUtils.objectToString(paramConvert(args, m));
             String endpoint = tryEndpointFromStub(stub);
 
             if (!ContextManager.isMessageIdQueueEmpty()) {
@@ -91,6 +79,7 @@ public class ByteBuddyAgentSoap {
                         ctx.traceId,
                         ctx.spanId,
                         endpoint,
+                        className,
                         operation,
                         soapRequest,
                         OffsetDateTime.now(),
@@ -117,7 +106,7 @@ public class ByteBuddyAgentSoap {
                         ctx.spanId,
                         soapResponse,
                         OffsetDateTime.now(),
-                        DataUtils.getaNullThrowable(t),
+                        ReflectionUtils.objectToString(t),
                         MessageTypeEnum.SOAP_END);
             }
         }
@@ -152,7 +141,8 @@ public class ByteBuddyAgentSoap {
     public static class SpringWsAdvice {
 
         @Advice.OnMethodEnter
-        public static MethodCtx onEnter(@Advice.Argument(0) Object request,
+        public static MethodCtx onEnter(@Advice.Origin Method m,
+                                        @Advice.Argument(0) Object request,
                                         @Advice.This Object template) {
 
 
@@ -160,7 +150,7 @@ public class ByteBuddyAgentSoap {
             ctx.uuidMessage = UuidCreator.getTimeBased().toString();
             ctx.traceId = ContextManager.getTraceId();
             ctx.spanId = ContextManager.getSpanId();
-
+            String className = m.getDeclaringClass().getName();
             String operation = extractOperationName(request);
 
             if (!ContextManager.isMessageIdQueueEmpty()) {
@@ -169,6 +159,7 @@ public class ByteBuddyAgentSoap {
                         ctx.traceId,
                         ctx.spanId,
                         tryResolveDefaultUri(template),
+                        className,
                         operation,
                         ReflectionUtils.objectToString(request),
                         OffsetDateTime.now(),
@@ -186,9 +177,8 @@ public class ByteBuddyAgentSoap {
                                   @Advice.Return Object response,
                                   @Advice.Thrown Throwable t) {
 
-            String soapResponse = ReflectionUtils.objectToString(response);
-
             if (!ContextManager.isMessageIdQueueEmpty()) {
+                String soapResponse = ReflectionUtils.objectToString(response);
                 sendMessageSOAPEnd(
                         ctx.uuidMessage,
                         ctx.traceId,
@@ -242,7 +232,7 @@ public class ByteBuddyAgentSoap {
     /* ------------------------------------------------------------------ */
     public static class CxfAdvice {
         @Advice.OnMethodEnter
-        public static MethodCtx onEnter(@Advice.Argument(1) Method m,
+        public static MethodCtx onEnter(@Advice.Origin Method m,
                                         @Advice.Argument(2) Object[] args,
                                         @Advice.This Object proxy) {
             MethodCtx ctx = new MethodCtx();
@@ -250,20 +240,22 @@ public class ByteBuddyAgentSoap {
             ctx.traceId = ContextManager.getTraceId();
             ctx.spanId = ContextManager.getSpanId();
             String operation = m.getName();
+            String className = m.getDeclaringClass().getName();
 
-            String soapRequest = ReflectionUtils.objectToString(args);
+            String soapRequest = ReflectionUtils.objectToString(paramConvert(args, m));
 
             String endpoint = tryExtractEndpoint(proxy);
             if (!ContextManager.isMessageIdQueueEmpty()) {
                 sendMessageSOAPStart(
                         ctx.uuidMessage, ctx.traceId, ctx.spanId,
-                        endpoint, operation, soapRequest,
+                        endpoint, className, operation, soapRequest,
                         OffsetDateTime.now(),
                         ContextManager.getMessageIdQueueNew(),
                         MessageTypeEnum.SOAP_START,
                         ContextManager.getMethodInpointName(),
                         ContextManager.getMessageInpointId(),
-                        ContextManager.getClassInpointName());
+                        ContextManager.getClassInpointName()
+                );
             }
             return ctx;
         }

@@ -1,10 +1,12 @@
 package io.bitdive.parent.message_producer;
 
+import com.github.f4b6a3.uuid.UuidCreator;
 import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import io.bitdive.parent.trasirovka.agent.utils.MessageTypeEnum;
-import org.apache.logging.log4j.Logger;
+import io.bitdive.parent.trasirovka.agent.utils.ReflectionUtils;
 
+import java.lang.reflect.Method;
 import java.net.URI;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
@@ -13,11 +15,11 @@ import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Optional;
 
-import static io.bitdive.parent.trasirovka.agent.utils.ReflectionUtils.SENSITIVE_KEYWORDS;
+import static io.bitdive.parent.trasirovka.agent.utils.DataUtils.paramConvert;
 
 
 public class MessageService {
-    private static final Logger logger = LibraryLoggerConfig.getLogger(MessageService.class);
+    private static final MonitoringLogger logger = LibraryLoggerConfig.getLogger(MessageService.class);
 
     private static final String SPLITTER = "~-~";
 
@@ -65,7 +67,7 @@ public class MessageService {
                     String key = URLDecoder.decode(pair.substring(0, idx), StandardCharsets.UTF_8.name());
                     String value = pair.substring(idx + 1);
 
-                    for (String litresMask : SENSITIVE_KEYWORDS) {
+                    for (String litresMask : YamlParserConfig.getProfilingConfig().getMonitoring().getSerialization().getSensitiveKeyWords()) {
                         if (key.toLowerCase().contains(litresMask) || litresMask.toLowerCase().contains(key)) {
                             value = URLEncoder.encode("*****", StandardCharsets.UTF_8.name());
                             break;
@@ -123,6 +125,7 @@ public class MessageService {
                                             String traceId,
                                             String spanId,
                                             String endpointUrl,
+                                            String className,
                                             String operation,
                                             String soapRequestBody,
                                             OffsetDateTime dateStart,
@@ -138,6 +141,7 @@ public class MessageService {
                 traceId,                                   // 2
                 spanId,                                    // 3
                 sanitizeUrl(Optional.ofNullable(endpointUrl).orElse("")), // 4
+                className,
                 operation,
                 Optional.ofNullable(soapRequestBody).orElse(""),          // 5
                 dateStart.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME), // 6
@@ -152,7 +156,8 @@ public class MessageService {
     }
 
     public static void sendMessageStart(String messageId,
-                                        String className, String methodName, String traceId, String spanId,
+                                        String className, String methodName, String abstractResolverClass,
+                                        String traceId, String spanId,
                                         OffsetDateTime dateStart, String parentMessage, boolean inPointFlag,
                                         String args, String operationType, String urlRequest, String serviceCallId,
                                         String methodInpointName,
@@ -178,13 +183,15 @@ public class MessageService {
                 serviceCallId,
                 methodInpointName,
                 messageInpointId,
-                classInpointName
+                classInpointName,
+                abstractResolverClass
                 ));
     }
 
     // Overload for REST: includes method/headers/body/charset fields
     public static void sendMessageStart(String messageId,
-                                        String className, String methodName, String traceId, String spanId,
+                                        String className, String methodName, String abstractResolverClass,
+                                        String traceId, String spanId,
                                         OffsetDateTime dateStart, String parentMessage, boolean inPointFlag,
                                         String args, String operationType, String urlRequest, String serviceCallId,
                                         String methodInpointName,
@@ -213,6 +220,7 @@ public class MessageService {
                 methodInpointName,
                 messageInpointId,
                 classInpointName,
+                abstractResolverClass,
                 (httpHeaders != null ? httpHeaders : ""),
                 (httpBody != null ? httpBody : "")
         ));
@@ -286,6 +294,31 @@ public class MessageService {
                 parentMessageId,
                 YamlParserConfig.getLibraryVersion(),
                 serviceCallId
+        ));
+    }
+
+    // NowRandomSpyAgent
+    public static void sendMessageRandomValues(String parentMessage, String traceId, String spanId,
+                                               Object[] args, Object  methodReturn, Object errorMessage ,
+                                               String className, String methodName , Method method
+    ) {
+        sendMessage(buildMessage(
+                MessageTypeEnum.RANDOM_VALUES.name(),
+                UuidCreator.getTimeBased().toString(),
+                parentMessage,
+                spanId,
+                traceId,
+                YamlParserConfig.getLibraryVersion(),
+                ReflectionUtils.objectToString(paramConvert(args, method)),
+                ReflectionUtils.objectToString(methodReturn),
+                ReflectionUtils.objectToString(errorMessage),
+                OffsetDateTime.now().minusNanos(10).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                OffsetDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                YamlParserConfig.getProfilingConfig().getApplication().getModuleName(),
+                YamlParserConfig.getProfilingConfig().getApplication().getServiceName(),
+                className,
+                methodName,
+                YamlParserConfig.getUUIDService()
         ));
     }
 

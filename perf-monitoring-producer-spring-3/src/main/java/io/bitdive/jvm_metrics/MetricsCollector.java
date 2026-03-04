@@ -1,8 +1,10 @@
 package io.bitdive.jvm_metrics;
 
+import io.bitdive.parent.dto.ApplicationEnvironment;
 import io.micrometer.core.instrument.Measurement;
 import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Tag;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -19,6 +21,7 @@ public class MetricsCollector {
     private OffsetDateTime createdMetric;
     private String serviceNodeUUID;
     private List<MetricDto> listOfMetrics;
+    private ApplicationEnvironment applicationEnvironment;
 
     public MetricsCollector(MeterRegistry meterRegistry) {
         listOfMetrics = collectMetrics(meterRegistry);
@@ -31,6 +34,11 @@ public class MetricsCollector {
             MetricDto dto = new MetricDto();
 
             dto.setName(meter.getId().getName());
+
+            // Собираем теги метрики (area=heap, id=G1 Old Gen и т.д.)
+            for (Tag tag : meter.getId().getTags()) {
+                dto.getTags().put(tag.getKey(), tag.getValue());
+            }
 
             for (Measurement measurement : meter.measure()) {
                 String statistic = measurement.getStatistic().name();

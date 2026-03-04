@@ -3,6 +3,7 @@ package io.bitdive.parent.trasirovka.agent.byte_buddy_agent;
 import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.KafkaAgentStorage;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
+import io.bitdive.parent.trasirovka.agent.utils.ReflectionUtils;
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.agent.builder.ResettableClassFileTransformer;
 import net.bytebuddy.implementation.MethodDelegation;
@@ -24,16 +25,14 @@ public class ByteBuddyAgentKafkaInterceptor {
 
     private static final Map<Object, String> NC_BOOTSTRAP_MAP = new ConcurrentHashMap<>();
 
-    public static ResettableClassFileTransformer init(Instrumentation instrumentation) {
-        return new AgentBuilder.Default()
-                .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
+    public static AgentBuilder init(AgentBuilder agentBuilder) {
+        return agentBuilder
                 .type(ElementMatchers.named("org.apache.kafka.clients.NetworkClient"))
                 .transform((builder, typeDescription, classLoader, module, protectionDomain) ->
                         builder
                                 .method(ElementMatchers.named("processDisconnection"))
                                 .intercept(MethodDelegation.to(ProcessDisconnectionInterceptor.class))
-                )
-                .installOn(instrumentation);
+                );
     }
 
     public static class ProcessDisconnectionInterceptor {
@@ -81,7 +80,7 @@ public class ByteBuddyAgentKafkaInterceptor {
                 Object exceptionObj = getExceptionMethod.invoke(disconnectState);
 
                 String exceptionMsg = (exceptionObj instanceof Throwable)
-                        ? ((Throwable) exceptionObj).getMessage()
+                        ? ReflectionUtils.objectToString((Throwable) exceptionObj)
                         : null;
 
                 switch (stateName) {

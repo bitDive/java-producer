@@ -1,4 +1,4 @@
-package io.bitdive.parent.parserConfig;
+package io.bitdive.core.parserConfig;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -11,10 +11,11 @@ import java.util.List;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-public class ConfigForServiceDTO {
+public class ConfigForServiceDTO implements ConfigForService {
     private String moduleName;
     private String serviceName;
     private List<String> packedScanner;
     private String serverUrl;
     private String token;
 }
+

@@ -6,7 +6,7 @@
 
     <groupId>io.bitdive</groupId>
     <artifactId>java-producer-parent</artifactId>
-    <version>1.3.4</version>
+    <version>1.3.13</version>
     <name>parent-producer</name>
 
     <properties>
@@ -42,16 +42,17 @@
     <dependencies>
 
         <dependency>
+            <groupId>io.bitdive</groupId>
+            <artifactId>bitdive-producer-core</artifactId>
+            <version>1.3.13</version>
+        </dependency>
+
+        <dependency>
             <groupId>com.thoughtworks.paranamer</groupId>
             <artifactId>paranamer</artifactId>
             <version>2.8.3</version>
         </dependency>
 
-        <dependency>
-            <groupId>com.google.code.gson</groupId>
-            <artifactId>gson</artifactId>
-            <version>2.12.1</version>
-        </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.datatype</groupId>
             <artifactId>jackson-datatype-jdk8</artifactId>
@@ -122,19 +123,7 @@
             <version>5.1.0</version>
         </dependency>
 
-        <dependency>
-            <groupId>org.apache.logging.log4j</groupId>
-            <artifactId>log4j-core</artifactId>
-            <version>2.24.1</version>
-            <scope>compile</scope>
-        </dependency>
 
-        <dependency>
-            <groupId>org.apache.logging.log4j</groupId>
-            <artifactId>log4j-api</artifactId>
-            <version>2.24.1</version>
-            <scope>compile</scope>
-        </dependency>
 
         <dependency>
             <groupId>org.aspectj</groupId>
@@ -146,13 +135,13 @@
         <dependency>
             <groupId>net.bytebuddy</groupId>
             <artifactId>byte-buddy-agent</artifactId>
-            <version>1.14.10</version>
+            <version>1.18.4</version>
             <scope>compile</scope>
         </dependency>
         <dependency>
             <groupId>net.bytebuddy</groupId>
             <artifactId>byte-buddy</artifactId>
-            <version>1.14.10</version>
+            <version>1.18.4</version>
             <scope>compile</scope>
         </dependency>
 
@@ -168,6 +157,24 @@
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-lang3</artifactId>
             <version>3.18.0</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-api</artifactId>
+            <version>2.25.3</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-core</artifactId>
+            <version>2.25.3</version>
+        </dependency>
+
+        <!-- High-throughput MPSC ring-buffer queue for MonitoringFileWriter -->
+        <dependency>
+            <groupId>org.jctools</groupId>
+            <artifactId>jctools-core</artifactId>
+            <version>4.0.1</version>
         </dependency>
 
     </dependencies>
@@ -206,6 +213,7 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-source-plugin</artifactId>
                 <version>3.2.1</version>
+
                 <executions>
                     <execution>
                         <id>attach-sources</id>
@@ -233,14 +241,110 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
-                <version>3.2.4</version>
+                <version>3.6.1</version>
+
                 <executions>
                     <execution>
+                        <id>shade</id>
                         <phase>package</phase>
                         <goals>
                             <goal>shade</goal>
                         </goals>
+
                         <configuration>
+                            <!-- Чтобы в опубликованном POM не тащились транзитивные зависимости,
+                                 ведь они уже внутри shaded-jar -->
+                            <createDependencyReducedPom>true</createDependencyReducedPom>
+
+                            <!-- Если это именно “изоляционный” артефакт, обычно делают так:
+                                 главный jar = shaded, без classifier -->
+                            <shadedArtifactAttached>false</shadedArtifactAttached>
+
+                            <!-- Явно укажи, что именно шейдить (так меньше сюрпризов) -->
+                            <artifactSet>
+                                <includes>
+                                    <include>io.bitdive:bitdive-producer-core</include>
+                                    <include>org.apache.logging.log4j:*</include>
+
+                                    <include>com.fasterxml.jackson.core:*</include>
+                                    <include>com.fasterxml.jackson.datatype:*</include>
+                                    <include>com.fasterxml.jackson.module:*</include>
+
+                                    <include>org.yaml:snakeyaml</include>
+                                    <include>com.bettercloud:vault-java-driver</include>
+
+
+                                    <include>org.aspectj:aspectjweaver</include>
+
+                                    <include>commons-io:commons-io</include>
+                                    <include>org.apache.commons:commons-lang3</include>
+                                    <include>com.thoughtworks.paranamer:paranamer</include>
+                                    <include>com.github.f4b6a3:uuid-creator</include>
+
+                                    <!-- Needed at runtime because we use MpscArrayQueue in MonitoringFileWriter -->
+                                    <include>org.jctools:jctools-core</include>
+                                </includes>
+                            </artifactSet>
+
+                            <relocations>
+
+                                <relocation>
+                                    <pattern>com.fasterxml.jackson</pattern>
+                                    <shadedPattern>io.bitdive.shaded.com.fasterxml.jackson</shadedPattern>
+                                </relocation>
+
+                                <relocation>
+                                    <pattern>org.yaml.snakeyaml</pattern>
+                                    <shadedPattern>io.bitdive.shaded.org.yaml.snakeyaml</shadedPattern>
+                                </relocation>
+
+                                <relocation>
+                                    <pattern>com.bettercloud.vault</pattern>
+                                    <shadedPattern>io.bitdive.shaded.com.bettercloud.vault</shadedPattern>
+                                </relocation>
+
+
+                                <relocation>
+                                    <pattern>org.aspectj</pattern>
+                                    <shadedPattern>io.bitdive.shaded.org.aspectj</shadedPattern>
+                                </relocation>
+
+                                <relocation>
+                                    <pattern>com.thoughtworks.paranamer</pattern>
+                                    <shadedPattern>io.bitdive.shaded.com.thoughtworks.paranamer</shadedPattern>
+                                </relocation>
+
+                                <relocation>
+                                    <pattern>org.apache.commons.lang3</pattern>
+                                    <shadedPattern>io.bitdive.shaded.org.apache.commons.lang3</shadedPattern>
+                                </relocation>
+
+                                <relocation>
+                                    <pattern>org.apache.commons.io</pattern>
+                                    <shadedPattern>io.bitdive.shaded.org.apache.commons.io</shadedPattern>
+                                </relocation>
+
+                                <!-- если тебе реально нужен relocation именно org.objectweb.asm -->
+                                <relocation>
+                                    <pattern>org.objectweb.asm</pattern>
+                                    <shadedPattern>io.bitdive.shaded.org.objectweb.asm</shadedPattern>
+                                </relocation>
+
+                                <relocation>
+                                    <pattern>org.jctools</pattern>
+                                    <shadedPattern>io.bitdive.shaded.org.jctools</shadedPattern>
+                                </relocation>
+                            </relocations>
+
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <manifestEntries>
+                                        <Multi-Release>true</Multi-Release>
+                                    </manifestEntries>
+                                </transformer>
+                            </transformers>
+
                             <filters>
                                 <filter>
                                     <artifact>*:*</artifact>
@@ -249,19 +353,12 @@
                                         <exclude>META-INF/*.DSA</exclude>
                                         <exclude>META-INF/*.RSA</exclude>
                                         <exclude>META-INF/*.kotlin_module</exclude>
-                                    </excludes>
-                                </filter>
-                                <filter>
-                                    <artifact>com.fasterxml.jackson.datatype:jackson-datatype-hibernate5</artifact>
-                                    <artifact>com.fasterxml.jackson.datatype:jackson-datatype-hibernate6</artifact>
-                                    <artifact>com.fasterxml.jackson.datatype:jackson-datatype-jsr310</artifact>
-                                    <artifact>com.fasterxml.jackson.datatype:jackson-datatype-jdk8</artifact>
-                                    <artifact>com.fasterxml.jackson.datatype:jackson-module-afterburner</artifact>
-                                    <excludes>
-                                        <exclude>META-INF/services/com.fasterxml.jackson.databind.Module</exclude>
+                                        <exclude>module-info.class</exclude>
                                     </excludes>
                                 </filter>
                             </filters>
+
+                            <minimizeJar>false</minimizeJar>
                         </configuration>
                     </execution>
                 </executions>

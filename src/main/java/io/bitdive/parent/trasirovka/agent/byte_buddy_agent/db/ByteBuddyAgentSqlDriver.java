@@ -1,7 +1,7 @@
 package io.bitdive.parent.trasirovka.agent.byte_buddy_agent.db;
 
-import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
+import io.bitdive.parent.trasirovka.agent.utils.ReflectionUtils;
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.agent.builder.ResettableClassFileTransformer;
 import net.bytebuddy.implementation.MethodDelegation;
@@ -17,15 +17,14 @@ import static io.bitdive.parent.message_producer.MessageService.sendMessageCriti
 
 public class ByteBuddyAgentSqlDriver {
 
-    public static ResettableClassFileTransformer init(Instrumentation instrumentation) {
-        return new AgentBuilder.Default()
+    public static AgentBuilder  init(AgentBuilder agentBuilder) {
+        return agentBuilder
                 .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
                 .type(ElementMatchers.isSubTypeOf(Driver.class))
                 .transform((builder, typeDescription, classLoader, module, protectionDomain) ->
                         builder.method(ElementMatchers.named("connect"))
                                 .intercept(MethodDelegation.to(DriverInterceptor.class))
-                )
-                .installOn(instrumentation);
+                );
     }
 
     public static class DriverInterceptor {
@@ -35,6 +34,7 @@ public class ByteBuddyAgentSqlDriver {
                                        @SuperCall Callable<?> zuper,
                                        @This Object thiz,
                                        @AllArguments Object[] args) throws Throwable {
+            if (LoggerStatusContent.getEnabledProfile()) return zuper.call();
             String url = (args[0] instanceof String) ? (String) args[0] : null;
             // Properties info = (args[1] instanceof Properties) ? (Properties) args[1] : null;
 
@@ -42,7 +42,7 @@ public class ByteBuddyAgentSqlDriver {
             try {
                 return zuper.call();
             } catch (Exception t) {
-                sendMessageCriticalDBError(url, t.getMessage());
+                sendMessageCriticalDBError(url, ReflectionUtils.objectToString(t));
                 throw t;
             }
         }

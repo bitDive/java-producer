@@ -176,4 +176,13 @@ public class ContextManager {
         }).orElse(null);
     }
 
+
+    public static void cleanupSafely() {
+        try {
+            contextThreadLocal.remove();
+        } catch (Exception e) {
+            // Игнорируем исключения при очистке
+        }
+    }
+
 }

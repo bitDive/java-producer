@@ -35,6 +35,7 @@ public class FeignClientAspect {
                     UUIDMessage,
                     methodSig.getDeclaringTypeName(),
                     methodSig.getName(),
+                    "",
                     ContextManager.getTraceId(),
                     ContextManager.getSpanId(),
                     OffsetDateTime.now(),
@@ -62,7 +63,7 @@ public class FeignClientAspect {
             sendMessageEnd(
                     UUIDMessage,
                     OffsetDateTime.now(),
-                    getaNullThrowable(thrown),
+                    ReflectionUtils.objectToString(thrown),
                     ReflectionUtils.objectToString(methodReturnConvert(retVal)),
                     ContextManager.getTraceId(),
                     ContextManager.getSpanId()

@@ -11,19 +11,15 @@ import io.bitdive.parent.utils.MethodTypeEnum;
 import io.bitdive.parent.utils.Pair;
 import io.bitdive.parent.utils.UtilsDataConvert;
 import net.bytebuddy.agent.builder.AgentBuilder;
-import net.bytebuddy.agent.builder.ResettableClassFileTransformer;
 import net.bytebuddy.description.NamedElement;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.implementation.MethodDelegation;
-import net.bytebuddy.implementation.bind.annotation.AllArguments;
-import net.bytebuddy.implementation.bind.annotation.Origin;
-import net.bytebuddy.implementation.bind.annotation.RuntimeType;
-import net.bytebuddy.implementation.bind.annotation.SuperCall;
+import net.bytebuddy.implementation.bind.annotation.*;
 import net.bytebuddy.matcher.ElementMatcher;
 import net.bytebuddy.matcher.ElementMatchers;
 
-import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
@@ -36,7 +32,28 @@ import static io.bitdive.parent.trasirovka.agent.utils.DataUtils.*;
 import static io.bitdive.parent.utils.UtilsDataConvert.*;
 import static net.bytebuddy.matcher.ElementMatchers.*;
 
-public class ByteBuddyAgentBasic {
+public class ByteBuddyAgentBasic  {
+    /**
+     * GC-friendly cache for proxy unwrapping.
+     *
+     * <p>Using a static Map<Class, Class> can pin ClassLoaders (especially with many dynamically generated proxy
+     * classes). {@link ClassValue} automatically releases entries when the corresponding Class is unloaded.
+     */
+    private static final ClassValue<Class<?>> UNWRAP_CACHE = new ClassValue<Class<?>>() {
+        @Override
+        protected Class<?> computeValue(Class<?> cls) {
+            try {
+                String n = cls.getName();
+                if (n.contains("$$SpringCGLIB$$") || n.contains("$$EnhancerBySpringCGLIB$$") || n.contains("CGLIB")) {
+                    Class<?> sc = cls.getSuperclass();
+                    if (sc != null && sc != Object.class) return sc;
+                }
+                return cls;
+            } catch (Throwable ignored) {
+                return cls;
+            }
+        }
+    };
 
     public static ElementMatcher.Junction<TypeDescription> getSpringComponentMatcher() {
         boolean monitoringOnlySpringComponent = YamlParserConfig.getProfilingConfig()
@@ -78,62 +95,59 @@ public class ByteBuddyAgentBasic {
                 .and(not(hasSuperType(named("org.springframework.web.socket.handler.TextWebSocketHandler"))));
     }
 
-    public static ResettableClassFileTransformer init(Instrumentation instrumentation) {
-        ElementMatcher.Junction<TypeDescription> monitoredTypes =
-                getApplicationPackedScanner(
-                        YamlParserConfig.getProfilingConfig().getApplication().getPackedScanner())
-                        .and(getSpringComponentMatcher())
-                        .and(getWebSocketHandlerExclusion())
-                        .and(not(isEnum()))
-                        .and(not(isAnnotatedWith(named("io.bitdive.parent.anotations.NotMonitoring"))))
-                        .and(not(isAnnotatedWith(nameContains("org.springframework.data."))))
-                        .and(not(hasSuperType(named("org.springframework.messaging.core.AbstractMessageSendingTemplate"))))
-                        .and(not(nameEndsWith("Configuration")))
-                        .and(not(nameEndsWith("RefreshScope")))
-                        .and(not(nameEndsWith("ConfigurationProperties")))
-                        .and(not(isSynthetic()))
-                        .and(not(nameMatches(".*\\$\\$.*")))     // можно убрать, если хотите ловить CGLIB
-                        .and(not(nameContains("CGLIB")))         // —//—
-                        .and(not(nameContains("ByteBuddy")))
-                        .and(not(nameContains("$")))
-                        .and(not(getExcludedSuperTypeMatcher()));
+    public static AgentBuilder  init(AgentBuilder agentBuilder) {
+        ElementMatcher.Junction<TypeDescription> monitoredTypes = getApplicationPackedScanner(
+                YamlParserConfig.getProfilingConfig().getApplication().getPackedScanner())
+                .and(getSpringComponentMatcher())
+                .and(getWebSocketHandlerExclusion())
+                .and(not(isEnum()))
+                .and(not(isAnnotatedWith(named("io.bitdive.parent.anotations.NotMonitoring"))))
+                .and(not(isAnnotatedWith(nameContains("org.springframework.data."))))
+                .and(not(hasSuperType(named("org.springframework.messaging.core.AbstractMessageSendingTemplate"))))
+                .and(not(nameEndsWith("Configuration")))
+                .and(not(nameEndsWith("RefreshScope")))
+                .and(not(nameEndsWith("ConfigurationProperties")))
+                .and(not(isSynthetic()))
+                .and(not(nameMatches(".*\\$\\$.*"))) // можно убрать, если хотите ловить CGLIB
+                .and(not(nameContains("CGLIB"))) // —//—
+                .and(not(nameContains("ByteBuddy")))
+                .and(not(nameContains("$")))
+                .and(not(getExcludedSuperTypeMatcher()));
 
-        return new AgentBuilder.Default()
-                .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
+        return agentBuilder
                 .type(monitoredTypes)
-                .transform((builder, typeDescription, classLoader, module, protectionDomain) ->
-                        builder.method(
-                                        any()
-                                                .and(not(isAbstract()))
-                                                .and(not(isAnnotatedWith(nameEndsWith("Bean"))))
-                                                .and(not(isAnnotatedWith(nameEndsWith("ExceptionHandler"))))
-                                                .and(not(isAnnotatedWith(named("org.springframework.scheduling.annotation.Scheduled"))))
-                                                .and(not(isAnnotatedWith(named("org.springframework.kafka.annotation.KafkaListener"))))
-                                                .and(not(isAnnotatedWith(named("org.springframework.messaging.handler.annotation.MessageMapping"))))
-                                                .and(not(isAnnotatedWith(named("org.springframework.messaging.handler.annotation.SendTo"))))
-                                                .and(not(nameMatches(".*\\$.*")))
-                                                .and(not(isSynthetic()))
-                                                .and(not(isDeclaredBy(Object.class)))
-                                                .and(not(isDeclaredBy(Enum.class)))
-                                                .and(not(isAnnotatedWith(nameEndsWith("PostConstruct"))))
+                .transform((builder, typeDescription, classLoader, module, protectionDomain) -> builder.method(
+                        any()
+                                .and(not(isAbstract()))
+                                .and(not(isAnnotatedWith(nameEndsWith("Bean"))))
+                                .and(not(isAnnotatedWith(nameEndsWith("ExceptionHandler"))))
+                                .and(not(isAnnotatedWith(named("org.springframework.scheduling.annotation.Scheduled"))))
+                                .and(not(isAnnotatedWith(named("org.springframework.kafka.annotation.KafkaListener"))))
+                                .and(not(isAnnotatedWith(
+                                        named("org.springframework.messaging.handler.annotation.MessageMapping"))))
+                                .and(not(isAnnotatedWith(
+                                        named("org.springframework.messaging.handler.annotation.SendTo"))))
+                                .and(not(nameMatches(".*\\$.*")))
+                                .and(not(isSynthetic()))
+                                .and(not(isDeclaredBy(Object.class)))
+                                .and(not(isDeclaredBy(Enum.class)))
+                                .and(not(isAnnotatedWith(nameEndsWith("PostConstruct"))))
 
-                                )
-                                // Вместо Advice.to(...) используем MethodDelegation.to(...)
-                                .intercept(MethodDelegation.to(BasicInterceptor.class))
                 )
-                .installOn(instrumentation);
+                        .intercept(MethodDelegation.to(BasicInterceptor.class)))
+                ;
     }
-
 
     public static class BasicInterceptor {
 
         @RuntimeType
         public static Object intercept(
+                @This(optional = true) Object thiz,
                 @Origin Method method,
                 @AllArguments Object[] args,
-                @SuperCall Callable<?> callable
-        ) throws Throwable {
-            if (LoggerStatusContent.getEnabledProfile()) return callable.call();
+                @SuperCall Callable<?> callable) throws Throwable {
+            if (LoggerStatusContent.getEnabledProfile())
+                return callable.call();
 
             String UUIDMessage = "";
             Object result = null;
@@ -143,30 +157,26 @@ public class ByteBuddyAgentBasic {
                     return callable.call();
                 }
 
-
                 if (!YamlParserConfig.getProfilingConfig().getMonitoring().getMonitoringOnlySpringComponent()) {
                     if (isSerializationContext()) {
                         return callable.call();
                     }
                 }
 
-
                 Pair<MethodTypeEnum, Boolean> flagNewSpan = identificationMethod(method);
-
 
                 if (!flagNewSpan.getVal() && ContextManager.isMessageIdQueueEmpty()) {
                     return callable.call();
                 }
-
 
                 String urlVal = "";
                 String serviceCallId = "";
 
                 if (flagNewSpan.getVal() &&
                         (flagNewSpan.getKey() != MethodTypeEnum.METHOD &&
-                                flagNewSpan.getKey() != MethodTypeEnum.SCHEDULER) &&
-                        ContextManager.isMessageIdQueueEmpty()
-                ) {
+                                flagNewSpan.getKey() != MethodTypeEnum.SCHEDULER)
+                        &&
+                        ContextManager.isMessageIdQueueEmpty()) {
                     UUIDMessage = ContextManager.getMessageStart();
                     urlVal = ContextManager.getUrlStart();
                     serviceCallId = ContextManager.getServiceCallId();
@@ -175,6 +185,7 @@ public class ByteBuddyAgentBasic {
                     UUIDMessage = UuidCreator.getTimeBased().toString();
                 }
 
+                String abstractResolverClass = resolveAbstractRealClassName(thiz, method);
                 if (flagNewSpan.getVal()) {
                     ContextManager.setMethodInpointName(method.getName());
                     ContextManager.setClassInpointName(method.getDeclaringClass().getName());
@@ -188,7 +199,8 @@ public class ByteBuddyAgentBasic {
 
                     java.util.Map<String, java.util.List<String>> headers = ContextManager.getRequestHeaders();
 
-                    // Try to get body from ContextManager, if not available get from RequestBodyCollector
+                    // Try to get body from ContextManager, if not available get from
+                    // RequestBodyCollector
                     byte[] bodyBytes = ContextManager.getRequestBodyBytes();
                     if (bodyBytes == null || bodyBytes.length == 0) {
                         // Body not yet saved to ContextManager, get it from collector and save
@@ -206,7 +218,8 @@ public class ByteBuddyAgentBasic {
                             boolean isFile = false;
                             if (headers != null) {
                                 java.util.List<String> contentTypes = headers.get("content-type");
-                                if (contentTypes == null) contentTypes = headers.get("Content-Type");
+                                if (contentTypes == null)
+                                    contentTypes = headers.get("Content-Type");
                                 if (contentTypes != null && !contentTypes.isEmpty()) {
                                     String contentType = contentTypes.get(0).toLowerCase();
                                     isFile = contentType.contains("multipart/form-data")
@@ -245,6 +258,7 @@ public class ByteBuddyAgentBasic {
                             UUIDMessage,
                             method.getDeclaringClass().getName(),
                             method.getName(),
+                            abstractResolverClass,
                             ContextManager.getTraceId(),
                             ContextManager.getSpanId(),
                             OffsetDateTime.now(),
@@ -258,8 +272,7 @@ public class ByteBuddyAgentBasic {
                             ContextManager.getMessageInpointId(),
                             ContextManager.getClassInpointName(),
                             headersStr,
-                            bodyStr
-                    );
+                            bodyStr);
 
                     ContextManager.setRequestHeaders(null);
                     ContextManager.setRequestBodyBytes(null);
@@ -270,6 +283,7 @@ public class ByteBuddyAgentBasic {
                             UUIDMessage,
                             method.getDeclaringClass().getName(),
                             method.getName(),
+                            abstractResolverClass,
                             ContextManager.getTraceId(),
                             ContextManager.getSpanId(),
                             OffsetDateTime.now(),
@@ -281,8 +295,7 @@ public class ByteBuddyAgentBasic {
                             serviceCallId,
                             ContextManager.getMethodInpointName(),
                             ContextManager.getMessageInpointId(),
-                            ContextManager.getClassInpointName()
-                    );
+                            ContextManager.getClassInpointName());
                 }
 
                 ContextManager.setMethodCallContextQueue(UUIDMessage);
@@ -301,7 +314,6 @@ public class ByteBuddyAgentBasic {
                 throw t;
             } finally {
 
-
                 try {
                     Object retVal = result;
                     if (result instanceof CompletableFuture) {
@@ -310,7 +322,7 @@ public class ByteBuddyAgentBasic {
 
                     String errorCallMessage = "";
                     if (thrown != null) {
-                        errorCallMessage = getaNullThrowable(thrown);
+                        errorCallMessage = ReflectionUtils.objectToString(thrown);
                     }
 
                     sendMessageEnd(
@@ -319,8 +331,7 @@ public class ByteBuddyAgentBasic {
                             errorCallMessage,
                             ReflectionUtils.objectToString(methodReturnConvert(retVal)),
                             ContextManager.getTraceId(),
-                            ContextManager.getSpanId()
-                    );
+                            ContextManager.getSpanId());
 
                     ContextManager.removeLastQueue();
 
@@ -333,5 +344,28 @@ public class ByteBuddyAgentBasic {
             }
             return result;
         }
+    }
+
+    private static String resolveAbstractRealClassName(@This(optional = true) Object thiz, Method method) {
+        Class<?> declared = method.getDeclaringClass();
+
+
+        if (declared.isInterface() || !Modifier.isAbstract(declared.getModifiers())) {
+            return null;
+        }
+        /*if (!declared.isInterface() && !Modifier.isAbstract(declared.getModifiers())) {
+            return declared.getName();
+        }*/
+
+        if (thiz == null) {
+            return declared.getName();
+        }
+
+        Class<?> runtime = unwrapProxyClass(thiz.getClass());
+        return runtime.getName();
+    }
+
+    private static Class<?> unwrapProxyClass(Class<?> c) {
+        return UNWRAP_CACHE.get(c);
     }
 }

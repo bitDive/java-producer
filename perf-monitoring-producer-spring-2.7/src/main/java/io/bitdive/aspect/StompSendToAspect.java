@@ -65,7 +65,7 @@ public class StompSendToAspect {
                     startTime,
                     OffsetDateTime.now(),
                     ContextManager.getMessageIdQueueNew(),
-                    getaNullThrowable(thrown),
+                    ReflectionUtils.objectToString(thrown),
                     ContextManager.getMethodInpointName(),
                     ContextManager.getMessageInpointId(),
                     ContextManager.getClassInpointName()

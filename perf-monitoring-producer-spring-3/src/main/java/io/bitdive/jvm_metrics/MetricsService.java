@@ -1,47 +1,52 @@
 package io.bitdive.jvm_metrics;
 
+import io.bitdive.shaded.com.fasterxml.jackson.databind.ObjectMapper;
+import io.bitdive.shaded.com.fasterxml.jackson.databind.SerializationFeature;
+import io.bitdive.shaded.com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.google.gson.JsonDeserializer;
-import com.google.gson.JsonSerializer;
 import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import io.micrometer.core.instrument.MeterRegistry;
 
 import java.time.OffsetDateTime;
-import java.time.format.DateTimeFormatter;
 
 public class MetricsService {
-    private MetricsCollector metricsCollector;
-    private static final Gson mapper = new GsonBuilder()
-            .registerTypeAdapter(OffsetDateTime.class, (JsonSerializer<OffsetDateTime>) (src, typeOfSrc, context) ->
-                    context.serialize(src.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)))
-            .registerTypeAdapter(OffsetDateTime.class, (JsonDeserializer<OffsetDateTime>) (json, type, context) ->
-                    OffsetDateTime.parse(json.getAsString(), DateTimeFormatter.ISO_OFFSET_DATE_TIME))
-            .create();
 
+    private MetricsCollector metricsCollector;
+
+    private static final ObjectMapper MAPPER = new ObjectMapper()
+            .registerModule(new JavaTimeModule())
+            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
     public MetricsService(MeterRegistry meterRegistry) {
+        MetricsCollector mc = null;
         try {
-            metricsCollector = new MetricsCollector(meterRegistry);
-            metricsCollector.setModuleName(YamlParserConfig.getProfilingConfig().getApplication().getModuleName());
-            metricsCollector.setServiceName(YamlParserConfig.getProfilingConfig().getApplication().getServiceName());
-            metricsCollector.setCreatedMetric(OffsetDateTime.now());
-            metricsCollector.setServiceNodeUUID(YamlParserConfig.getUUIDService());
+            mc = new MetricsCollector(meterRegistry);
+            mc.setModuleName(YamlParserConfig.getProfilingConfig().getApplication().getModuleName());
+            mc.setServiceName(YamlParserConfig.getProfilingConfig().getApplication().getServiceName());
+            mc.setCreatedMetric(OffsetDateTime.now());
+            mc.setServiceNodeUUID(YamlParserConfig.getUUIDService());
         } catch (Exception e) {
-            if (LoggerStatusContent.isErrorsOrDebug())
-                System.err.println("Failed to write metrics to file: " + e.getMessage());
+            if (LoggerStatusContent.isErrorsOrDebug()) {
+                System.err.println("Failed to init metrics collector: " + e.getMessage());
+            }
         }
+        this.metricsCollector = mc;
     }
 
-
     public String sendMetrics() {
+        if (metricsCollector == null) return "";
         try {
-            return mapper.toJson(metricsCollector);
+            if (YamlParserConfig.getApplicationEnvironment() != null){
+                metricsCollector.setApplicationEnvironment(YamlParserConfig.getApplicationEnvironment());
+            }
+            String dataMetrics= MAPPER.writeValueAsString(metricsCollector);
+            metricsCollector = null;
+            YamlParserConfig.setApplicationEnvironment(null);
+            return dataMetrics;
         } catch (Exception e) {
             System.out.println("Error while sending metrics: " + e.getMessage());
+            return "";
         }
-        return "";
     }
 }

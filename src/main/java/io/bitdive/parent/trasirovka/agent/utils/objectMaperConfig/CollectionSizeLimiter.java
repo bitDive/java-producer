@@ -4,8 +4,7 @@ import com.fasterxml.jackson.databind.BeanDescription;
 import com.fasterxml.jackson.databind.JsonSerializer;
 import com.fasterxml.jackson.databind.SerializationConfig;
 import com.fasterxml.jackson.databind.ser.BeanSerializerModifier;
-
-import java.util.Collection;
+import com.fasterxml.jackson.databind.type.CollectionType;
 
 public class CollectionSizeLimiter extends BeanSerializerModifier {
     private final int maxElements;
@@ -17,12 +16,12 @@ public class CollectionSizeLimiter extends BeanSerializerModifier {
     }
 
     @Override
-    public JsonSerializer<?> modifySerializer(SerializationConfig config,
-                                              BeanDescription beanDesc,
-                                              JsonSerializer<?> serializer) {
-        if (Collection.class.isAssignableFrom(beanDesc.getBeanClass())) {
-            return new LimitedCollectionSerializer(maxElements, messageMaxElements);
-        }
-        return serializer;
+    public JsonSerializer<?> modifyCollectionSerializer(
+            SerializationConfig config,
+            CollectionType valueType,
+            BeanDescription beanDesc,
+            JsonSerializer<?> serializer
+    ) {
+        return new LimitedCollectionSerializer(serializer, maxElements, messageMaxElements);
     }
 }

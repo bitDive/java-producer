@@ -13,9 +13,8 @@ import java.util.Map;
 import java.util.Optional;
 
 public class KafkaConsumerAgent {
-    public static ResettableClassFileTransformer init(Instrumentation instrumentation) {
-        return new AgentBuilder.Default()
-                .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
+    public static AgentBuilder init(AgentBuilder agentBuilder) {
+        return agentBuilder
                 .type(ElementMatchers.named("org.apache.kafka.clients.consumer.KafkaConsumer"))
                 .transform((builder, typeDescription, classLoader, module, dd) ->
                         builder.constructor(ElementMatchers.any()
@@ -23,14 +22,13 @@ public class KafkaConsumerAgent {
                                                 .and(ElementMatchers.takesArgument(0, Map.class))*/
                                 )
                                 .intercept(Advice.to(KafkaConsumerConstructorAdvice.class))
-                )
-                .installOn(instrumentation);
+                );
     }
 
     public static class KafkaConsumerConstructorAdvice {
         @Advice.OnMethodEnter
         public static void onEnter(@Advice.AllArguments Object[] allArgs) {
-            if (LoggerStatusContent.getEnabledProfile()) return;
+           // if (LoggerStatusContent.getEnabledProfile()) return;
             try {
                 Object bootstrapServers = null;
                 if (allArgs.length > 0) {

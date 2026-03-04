@@ -1,20 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="Encoding">
-    <file url="file://$PROJECT_DIR$/generate-monitoring-method/lombok-bitdive-core/src/main/java" charset="UTF-8" />
-    <file url="file://$PROJECT_DIR$/generate-monitoring-method/lombok-bitdive-core/src/main/resources" charset="UTF-8" />
-    <file url="file://$PROJECT_DIR$/generate-monitoring-method/lombok-bitdive-java8/src/main/java" charset="UTF-8" />
-    <file url="file://$PROJECT_DIR$/generate-monitoring-method/lombok-bitdive-java8/src/main/resources" charset="UTF-8" />
-    <file url="file://$PROJECT_DIR$/generate-monitoring-method/lombok-bitdive-java9/src/main/java" charset="UTF-8" />
-    <file url="file://$PROJECT_DIR$/generate-monitoring-method/lombok-bitdive-java9/src/main/resources" charset="UTF-8" />
-    <file url="file://$PROJECT_DIR$/generate-monitoring-method/src/main/java" charset="UTF-8" />
-    <file url="file://$PROJECT_DIR$/generate-monitoring-method/src/main/resources" charset="UTF-8" />
-    <file url="file://$PROJECT_DIR$/lombok-bitdive-core/src/main/java" charset="UTF-8" />
-    <file url="file://$PROJECT_DIR$/lombok-bitdive-core/src/main/resources" charset="UTF-8" />
-    <file url="file://$PROJECT_DIR$/lombok-bitdive-java8/src/main/java" charset="UTF-8" />
-    <file url="file://$PROJECT_DIR$/lombok-bitdive-java8/src/main/resources" charset="UTF-8" />
-    <file url="file://$PROJECT_DIR$/lombok-bitdive-java9/src/main/java" charset="UTF-8" />
-    <file url="file://$PROJECT_DIR$/lombok-bitdive-java9/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/bitdive-bytebuddy-shaded/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/bitdive-bytebuddy-shaded/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/bitdive-producer-core/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/bitdive-producer-core/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/perf-monitoring-producer-compat/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/perf-monitoring-producer-compat/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/perf-monitoring-producer-spring-2.7/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/perf-monitoring-producer-spring-3/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/src/main/java" charset="UTF-8" />

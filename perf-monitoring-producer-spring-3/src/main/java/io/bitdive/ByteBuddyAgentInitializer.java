@@ -1,21 +1,27 @@
 package io.bitdive;
 
-
+import io.bitdive.objectMaperConfig.BeanLikeSerializerModifier;
+import io.bitdive.shaded.com.fasterxml.jackson.annotation.JsonTypeInfo;
+import io.bitdive.shaded.com.fasterxml.jackson.databind.JavaType;
+import io.bitdive.shaded.com.fasterxml.jackson.databind.ObjectMapper;
+import io.bitdive.shaded.com.fasterxml.jackson.databind.jsontype.impl.LaissezFaireSubTypeValidator;
+import io.bitdive.shaded.com.fasterxml.jackson.databind.jsontype.impl.StdTypeResolverBuilder;
 import io.bitdive.jvm_metrics.GenerateJvmMetrics;
 import io.bitdive.parent.init.MonitoringStarting;
 import io.bitdive.parent.message_producer.LibraryLoggerConfig;
-import io.bitdive.parent.parserConfig.ConfigForServiceDTO;
+import io.bitdive.core.parserConfig.ConfigForService;
 import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
-import io.bitdive.parent.utils.ByteBuddyConfigLoader;
+import io.bitdive.parent.trasirovka.agent.utils.ReflectionUtils;
+import io.bitdive.core.utils.ByteBuddyConfigLoader;
 import io.bitdive.parent.utils.LibraryVersionBitDive;
+import io.bitdive.shaded.com.fasterxml.jackson.databind.module.SimpleModule;
 import org.springframework.context.ApplicationContextInitializer;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.env.ConfigurableEnvironment;
 
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Set;
+
+import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -40,7 +46,7 @@ public class ByteBuddyAgentInitializer implements ApplicationContextInitializer<
                 YamlParserConfig.setWork(false);
                 return;
             }
-            ConfigForServiceDTO configForServiceDTO = ByteBuddyConfigLoader.load();
+            ConfigForService configForServiceDTO = ByteBuddyConfigLoader.load();
 
             scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
                 Thread t = new Thread(r, "minute-task");
@@ -48,7 +54,7 @@ public class ByteBuddyAgentInitializer implements ApplicationContextInitializer<
                 return t;
             });
 
-            final ConfigForServiceDTO configForServiceDTOFinal = configForServiceDTO;
+            final ConfigForService configForServiceDTOFinal = configForServiceDTO;
 
             Runnable task = () -> {
                 try {
@@ -59,8 +65,7 @@ public class ByteBuddyAgentInitializer implements ApplicationContextInitializer<
                         if (activeProfiles.length > 0) {
                             YamlParserConfig.getProfilingConfig().getApplication().setModuleName(
                                     YamlParserConfig.getProfilingConfig().getApplication().getModuleName() + "-" +
-                                            String.join("-", activeProfiles)
-                            );
+                                            String.join("-", activeProfiles));
                         }
                         LibraryLoggerConfig.init();
                         GenerateJvmMetrics.init();
@@ -73,17 +78,16 @@ public class ByteBuddyAgentInitializer implements ApplicationContextInitializer<
                 }
             };
 
-
             scheduler.scheduleAtFixedRate(task, 1, 1, TimeUnit.MINUTES);
 
             YamlParserConfig.loadConfig(configForServiceDTO);
             YamlParserConfig.setLibraryVersion(LibraryVersionBitDive.version);
 
-
             if (YamlParserConfig.getProfilingConfig().getNotWorkWithSpringProfiles() != null &&
                     !YamlParserConfig.getProfilingConfig().getNotWorkWithSpringProfiles().isEmpty()) {
                 Set<String> activeProfileSet = Arrays.stream(activeProfiles).collect(Collectors.toSet());
-                Set<String> notWorkProfileSet = new HashSet<>(YamlParserConfig.getProfilingConfig().getNotWorkWithSpringProfiles());
+                Set<String> notWorkProfileSet = new HashSet<>(
+                        YamlParserConfig.getProfilingConfig().getNotWorkWithSpringProfiles());
 
                 activeProfileSet.retainAll(notWorkProfileSet);
                 if (!activeProfileSet.isEmpty()) {
@@ -95,21 +99,56 @@ public class ByteBuddyAgentInitializer implements ApplicationContextInitializer<
 
             YamlParserConfig.getProfilingConfig().detectActualConfig(activeProfiles);
             if (LoggerStatusContent.isDebug()) {
-                System.out.println("ByteBuddyAgentInitializer initialize start version: " + YamlParserConfig.getLibraryVersion());
+                System.out.println(
+                        "ByteBuddyAgentInitializer initialize start version: " + YamlParserConfig.getLibraryVersion());
             }
-
 
             if (activeProfiles.length > 0) {
                 YamlParserConfig.getProfilingConfig().getApplication().setModuleName(
                         YamlParserConfig.getProfilingConfig().getApplication().getModuleName() + "-" +
-                                String.join("-", activeProfiles)
-                );
+                                String.join("-", activeProfiles));
             }
-
 
             LibraryLoggerConfig.init();
             MonitoringStarting.init();
             GenerateJvmMetrics.init();
+
+            StdTypeResolverBuilder typer =
+                    new ObjectMapper.DefaultTypeResolverBuilder(
+                            ObjectMapper.DefaultTyping.NON_FINAL,
+                            LaissezFaireSubTypeValidator.instance
+                    ) {
+                        @Override
+                        public boolean useForType(JavaType t) {
+                            Class<?> raw = t.getRawClass();
+
+                            // 1) всегда добавляем @class для records
+                            if (raw.isRecord()) {
+                                return true;
+                            }
+
+                            // 2) всё остальное – как у стандартного NON_FINAL
+                            return super.useForType(t);
+                        }
+                    };
+
+            typer.init(JsonTypeInfo.Id.CLASS, null);
+            typer.inclusion(JsonTypeInfo.As.PROPERTY);
+            typer.typeProperty("@class");
+
+            int MAX_COLLECTION_SIZE = YamlParserConfig
+                    .getProfilingConfig().getMonitoring().getSerialization().getMaxElementCollection();
+
+            String[] EXCLUDED_PACKAGES =YamlParserConfig
+                    .getProfilingConfig().getMonitoring().getSerialization().getExcludedPackages();
+
+            SimpleModule module = new SimpleModule();
+            module.setSerializerModifier(new BeanLikeSerializerModifier());
+
+            List<SimpleModule> simpleModuleList = new ArrayList<>();
+            simpleModuleList.add(module);
+
+            ReflectionUtils.init(List.of(typer),MAX_COLLECTION_SIZE,EXCLUDED_PACKAGES,simpleModuleList);
 
             initializeAgent = true;
             YamlParserConfig.setWork(true);
@@ -126,8 +165,8 @@ public class ByteBuddyAgentInitializer implements ApplicationContextInitializer<
     private boolean isTestEnvironment() {
         try {
             if ("test".equalsIgnoreCase(System.getProperty("env")) ||
-                    "test".equalsIgnoreCase(System.getenv("ENV"))
-            ) return true;
+                    "test".equalsIgnoreCase(System.getenv("ENV")))
+                return true;
             Class.forName("org.junit.jupiter.api.Test");
             return true;
         } catch (ClassNotFoundException e) {

@@ -1,7 +1,6 @@
 package io.bitdive.aspect;
 
 import com.github.f4b6a3.uuid.UuidCreator;
-import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.ContextManager;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import io.bitdive.parent.trasirovka.agent.utils.ReflectionUtils;
@@ -10,11 +9,10 @@ import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.reflect.MethodSignature;
+import org.springframework.aop.support.AopUtils;
 import org.springframework.stereotype.Component;
-import org.springframework.stereotype.Repository;
 
 import java.time.OffsetDateTime;
-import java.util.Arrays;
 
 import static io.bitdive.parent.message_producer.MessageService.sendMessageEnd;
 import static io.bitdive.parent.message_producer.MessageService.sendMessageStart;
@@ -34,33 +32,15 @@ public class RepositoryAspect {
         String UUIDMessage = UuidCreator.getTimeBased().toString();
         Object retVal = null;
         Throwable thrown = null;
+
         MethodSignature methodSig = (MethodSignature) joinPoint.getSignature();
-
-
-        Class<?>[] ifcs = joinPoint.getTarget().getClass().getInterfaces();
-
-
-        Class<?> repoIface = Arrays.stream(ifcs)
-                .filter(i ->
-                        i.isAnnotationPresent(Repository.class) ||
-                                Arrays.stream(YamlParserConfig.getProfilingConfig().getApplication().getPackedScanner())
-                                        .anyMatch(s -> i.getName().contains(s))
-
-                )
-                .findFirst()
-
-                .orElse(methodSig.getDeclaringType());
-
-        String repoName = repoIface.getName();
-        String methodName = methodSig.getName();
-
-
+        Class<?> targetClass = AopUtils.getTargetClass(joinPoint.getTarget());
         try {
-
             sendMessageStart(
                     UUIDMessage,
-                    repoName,
-                    methodName,
+                    targetClass.getName(),
+                    methodSig.getName(),
+                    "",
                     ContextManager.getTraceId(),
                     ContextManager.getSpanId(),
                     OffsetDateTime.now(),
@@ -85,7 +65,7 @@ public class RepositoryAspect {
             sendMessageEnd(
                     UUIDMessage,
                     OffsetDateTime.now(),
-                    getaNullThrowable(thrown),
+                    ReflectionUtils.objectToString(thrown),
                     ReflectionUtils.objectToString(methodReturnConvert(retVal)),
                     ContextManager.getTraceId(),
                     ContextManager.getSpanId()

@@ -4,21 +4,99 @@ import io.bitdive.parent.trasirovka.agent.utils.ContextManager;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import io.bitdive.parent.trasirovka.agent.utils.RequestBodyCollector;
 import net.bytebuddy.agent.builder.AgentBuilder;
-import net.bytebuddy.agent.builder.ResettableClassFileTransformer;
 import net.bytebuddy.asm.Advice;
+import net.bytebuddy.description.method.MethodDescription;
+import net.bytebuddy.description.method.MethodList;
+import net.bytebuddy.description.modifier.Visibility;
+import net.bytebuddy.description.type.TypeDescription;
+import net.bytebuddy.implementation.MethodCall;
 import net.bytebuddy.matcher.ElementMatchers;
 
-import java.lang.instrument.Instrumentation;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.util.*;
 
 
 public class ByteBuddyAgentResponseWeb {
-    public static ResettableClassFileTransformer init(Instrumentation instrumentation) {
+
+    /**
+     * View injected into {@code org.apache.coyote.Request} to avoid reflection in advice.
+     */
+    public interface BitDiveCoyoteRequestView {
+        String bitdiveScheme();
+        String bitdiveServerName();
+        int bitdiveServerPort();
+        String bitdiveQueryString();
+        String bitdiveRequestUri();
+        String bitdiveGetHeader(String name);
+        Object bitdiveMimeHeaders();
+    }
+
+    /**
+     * View injected into {@code org.apache.tomcat.util.http.MimeHeaders}.
+     */
+    public interface BitDiveMimeHeadersView {
+        Enumeration<?> bitdiveNames();
+        Enumeration<?> bitdiveValues(String name);
+    }
+
+    public static AgentBuilder  init(AgentBuilder agentBuilder) {
         try {
-            return new AgentBuilder.Default()
-                    .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
+            return agentBuilder
+                    // Coyote request view
+                    .type(ElementMatchers.named("org.apache.coyote.Request"))
+                    .transform((builder, td, cl, module, dd) -> {
+                        MethodDescription.InDefinedShape mScheme = findMethodInHierarchy(td, "scheme", 0);
+                        MethodDescription.InDefinedShape mServerName = findMethodInHierarchy(td, "serverName", 0);
+                        MethodDescription.InDefinedShape mQueryString = findMethodInHierarchy(td, "queryString", 0);
+                        MethodDescription.InDefinedShape mServerPort = findMethodInHierarchy(td, "getServerPort", 0);
+                        MethodDescription.InDefinedShape mGetHeader = findMethodInHierarchy(td, "getHeader", 1);
+                        MethodDescription.InDefinedShape mGetMimeHeaders = findMethodInHierarchy(td, "getMimeHeaders", 0);
+                        MethodDescription.InDefinedShape mRequestURI = findMethodInHierarchy(td, "requestURI", 0);
+
+                        MethodDescription.InDefinedShape mToString;
+                        try {
+                            mToString = new MethodDescription.ForLoadedMethod(Object.class.getMethod("toString"));
+                        } catch (NoSuchMethodException e) {
+                            return builder;
+                        }
+
+                        if (mScheme == null || mServerName == null || mQueryString == null || mServerPort == null ||
+                                mGetHeader == null || mGetMimeHeaders == null || mRequestURI == null) {
+                            return builder;
+                        }
+
+                        return builder
+                                .implement(BitDiveCoyoteRequestView.class)
+                                .defineMethod("bitdiveScheme", String.class, Visibility.PUBLIC)
+                                .intercept(MethodCall.invoke(mToString).onMethodCall(MethodCall.invoke(mScheme)))
+                                .defineMethod("bitdiveServerName", String.class, Visibility.PUBLIC)
+                                .intercept(MethodCall.invoke(mToString).onMethodCall(MethodCall.invoke(mServerName)))
+                                .defineMethod("bitdiveQueryString", String.class, Visibility.PUBLIC)
+                                .intercept(MethodCall.invoke(mToString).onMethodCall(MethodCall.invoke(mQueryString)))
+                                .defineMethod("bitdiveServerPort", int.class, Visibility.PUBLIC)
+                                .intercept(MethodCall.invoke(mServerPort))
+                                .defineMethod("bitdiveGetHeader", String.class, Visibility.PUBLIC)
+                                .withParameters(String.class)
+                                .intercept(MethodCall.invoke(mGetHeader).withArgument(0))
+                                .defineMethod("bitdiveMimeHeaders", Object.class, Visibility.PUBLIC)
+                                .intercept(MethodCall.invoke(mGetMimeHeaders))
+                                .defineMethod("bitdiveRequestUri", String.class, Visibility.PUBLIC)
+                                .intercept(MethodCall.invoke(mToString).onMethodCall(MethodCall.invoke(mRequestURI)));
+                    })
+                    // MimeHeaders view
+                    .type(ElementMatchers.named("org.apache.tomcat.util.http.MimeHeaders"))
+                    .transform((builder, td, cl, module, dd) -> {
+                        MethodDescription.InDefinedShape mNames = findMethodInHierarchy(td, "names", 0);
+                        MethodDescription.InDefinedShape mValues = findMethodInHierarchy(td, "values", 1);
+                        if (mNames == null || mValues == null) return builder;
+
+                        return builder
+                                .implement(BitDiveMimeHeadersView.class)
+                                .defineMethod("bitdiveNames", Enumeration.class, Visibility.PUBLIC)
+                                .intercept(MethodCall.invoke(mNames))
+                                .defineMethod("bitdiveValues", Enumeration.class, Visibility.PUBLIC)
+                                .withParameters(String.class)
+                                .intercept(MethodCall.invoke(mValues).withArgument(0));
+                    })
                     .type(ElementMatchers.named("org.apache.catalina.connector.CoyoteAdapter"))
                     .transform((builder, typeDescription, classLoader, module, dd) ->
                             builder.visit(Advice.to(CoyoteAdapterAdvice.class)
@@ -26,12 +104,12 @@ public class ByteBuddyAgentResponseWeb {
                                             .and(ElementMatchers.takesArguments(2))
                                     )
                             )
-                    ).installOn(instrumentation);
+                    );
         } catch (Exception e) {
             if (LoggerStatusContent.isErrorsOrDebug())
                 System.err.println("not found class org.apache.catalina.connector.CoyoteAdapte");
         }
-        return null;
+        return agentBuilder;
 
     }
 
@@ -44,20 +122,23 @@ public class ByteBuddyAgentResponseWeb {
                 ContextManager.createNewRequest();
                 RequestBodyCollector.reset();
                 ContextManager.setUrlStart(extractFullUrlFromRequest(request));
-                Class<?> requestClass = request.getClass();
-                java.lang.reflect.Method getHeaderMethod = requestClass.getMethod("getHeader", String.class);
 
-                String headerMessage_Id = (String) getHeaderMethod.invoke(request, "x-BitDiv-custom-parent-message-id");
+                if (!(request instanceof BitDiveCoyoteRequestView)) {
+                    return;
+                }
+                BitDiveCoyoteRequestView rq = (BitDiveCoyoteRequestView) request;
+
+                String headerMessage_Id = rq.bitdiveGetHeader("x-BitDiv-custom-parent-message-id");
                 if (headerMessage_Id != null) {
                     ContextManager.setParentMessageIdOtherService(headerMessage_Id);
                 }
 
-                String headersSpanId = (String) getHeaderMethod.invoke(request, "x-BitDiv-custom-span-id");
+                String headersSpanId = rq.bitdiveGetHeader("x-BitDiv-custom-span-id");
                 if (headersSpanId != null) {
                     ContextManager.setSpanID(headersSpanId);
                 }
 
-                String headersServiceCallId = (String) getHeaderMethod.invoke(request, "x-BitDiv-custom-service-call-id");
+                String headersServiceCallId = rq.bitdiveGetHeader("x-BitDiv-custom-service-call-id");
                 if (headersServiceCallId != null) {
                     ContextManager.setServiceCallId(headersServiceCallId);
                 }
@@ -65,28 +146,22 @@ public class ByteBuddyAgentResponseWeb {
 
                 // Capture all headers using Coyote API
                 try {
-                    Method getMimeHeaders = requestClass.getMethod("getMimeHeaders");
-                    Object mimeHeaders = getMimeHeaders.invoke(request);
                     Map<String, List<String>> headersMap = new LinkedHashMap<>();
 
-                    if (mimeHeaders != null) {
-                        Class<?> mimeHeadersClass = mimeHeaders.getClass();
-                        Method namesMethod = mimeHeadersClass.getMethod("names");
-                        Object namesEnumObj = namesMethod.invoke(mimeHeaders);
-
-                        if (namesEnumObj instanceof Enumeration) {
-                            Enumeration<?> names = (Enumeration<?>) namesEnumObj;
+                    Object mimeHeaders = rq.bitdiveMimeHeaders();
+                    if (mimeHeaders instanceof BitDiveMimeHeadersView) {
+                        BitDiveMimeHeadersView mh = (BitDiveMimeHeadersView) mimeHeaders;
+                        Enumeration<?> names = mh.bitdiveNames();
+                        if (names != null) {
                             while (names.hasMoreElements()) {
                                 Object nameObj = names.nextElement();
                                 if (nameObj == null) continue;
                                 String name = nameObj.toString();
 
                                 // Get values for this header name
-                                Method getValuesMethod = mimeHeadersClass.getMethod("values", String.class);
-                                Object valuesEnumObj = getValuesMethod.invoke(mimeHeaders, name);
+                                Enumeration<?> vals = mh.bitdiveValues(name);
                                 List<String> values = new ArrayList<>();
-                                if (valuesEnumObj instanceof Enumeration) {
-                                    Enumeration<?> vals = (Enumeration<?>) valuesEnumObj;
+                                if (vals != null) {
                                     while (vals.hasMoreElements()) {
                                         Object v = vals.nextElement();
                                         if (v != null) values.add(v.toString());
@@ -120,22 +195,19 @@ public class ByteBuddyAgentResponseWeb {
 
     public static String extractFullUrlFromRequest(Object request) {
         try {
-            String scheme = getStringValue(request, "scheme");
+            if (!(request instanceof BitDiveCoyoteRequestView)) return null;
+            BitDiveCoyoteRequestView rq = (BitDiveCoyoteRequestView) request;
+
+            String scheme = rq.bitdiveScheme();
             if (scheme == null) scheme = "http";
 
-            String serverName = getStringValue(request, "serverName");
+            String serverName = rq.bitdiveServerName();
             if (serverName == null) serverName = "";
 
-            Method getServerPortMethod = request.getClass().getMethod("getServerPort");
-            int serverPort = (int) getServerPortMethod.invoke(request);
+            int serverPort = rq.bitdiveServerPort();
 
-            Field queryMBField = request.getClass().getDeclaredField("uriMB");
-            queryMBField.setAccessible(true);
-            Object uriMBVal = queryMBField.get(request);
-            Method cloneUrlMethod = uriMBVal.getClass().getMethod("clone");
-            cloneUrlMethod.setAccessible(true);
-            String uri = cloneUrlMethod.invoke(uriMBVal).toString();
-            String queryString = getStringValue(request, "queryString");
+            String uri = rq.bitdiveRequestUri();
+            String queryString = rq.bitdiveQueryString();
             if (queryString == null) queryString = "";
 
             StringBuilder fullUrl = new StringBuilder();
@@ -156,16 +228,32 @@ public class ByteBuddyAgentResponseWeb {
         }
     }
 
-    private static String getStringValue(Object obj, String methodName) {
-        try {
-            Method method = obj.getClass().getMethod(methodName);
-            Object result = method.invoke(obj);
-            return result != null ? result.toString() : null;
-        } catch (Exception e) {
-            if (LoggerStatusContent.isErrorsOrDebug())
-                System.err.println("not found class getStringValue");
-            return null;
+    // =========================
+    // ByteBuddy helpers
+    // =========================
+
+    private static MethodDescription.InDefinedShape findMethodInHierarchy(TypeDescription type, String name, int argsCount) {
+        TypeDescription cur = type;
+        while (cur != null) {
+            try {
+                MethodList<MethodDescription.InDefinedShape> declared =
+                        cur.getDeclaredMethods().filter(ElementMatchers.named(name).and(ElementMatchers.takesArguments(argsCount)));
+                if (!declared.isEmpty()) return declared.getOnly();
+            } catch (Exception ignored) {
+            }
+
+            try {
+                for (TypeDescription.Generic itf : cur.getInterfaces()) {
+                    MethodDescription.InDefinedShape m = findMethodInHierarchy(itf.asErasure(), name, argsCount);
+                    if (m != null) return m;
+                }
+            } catch (Exception ignored) {
+            }
+
+            TypeDescription.Generic sc = cur.getSuperClass();
+            cur = (sc == null) ? null : sc.asErasure();
         }
+        return null;
     }
 }
 

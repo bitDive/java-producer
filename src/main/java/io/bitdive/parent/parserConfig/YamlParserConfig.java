@@ -1,6 +1,8 @@
 package io.bitdive.parent.parserConfig;
 
 import com.github.f4b6a3.uuid.UuidCreator;
+import io.bitdive.core.parserConfig.ConfigForService;
+import io.bitdive.parent.dto.ApplicationEnvironment;
 import lombok.Getter;
 import lombok.Setter;
 import org.apache.commons.lang3.ObjectUtils;
@@ -8,6 +10,7 @@ import org.yaml.snakeyaml.Yaml;
 
 import java.io.InputStream;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.stream.Stream;
 
 public class YamlParserConfig {
@@ -26,8 +29,12 @@ public class YamlParserConfig {
     @Getter
     private static ProfilingConfig profilingConfig;
 
+    @Getter
+    @Setter
+    private static ApplicationEnvironment applicationEnvironment=null;
 
-    public static void loadConfig(ConfigForServiceDTO dto) {
+
+    public static void loadConfig(ConfigForService dto) {
         Yaml yaml = new Yaml();
 
         ProfilingConfig defaultConfig;
@@ -119,6 +126,20 @@ public class YamlParserConfig {
                                         .toArray(String[]::new)
                         );
                     }
+
+                    if (monitoringConfigOverride.getSerialization() != null
+                            && monitoringConfigOverride.getSerialization().getSensitiveKeyWords() != null) {
+
+                        HashSet<String> merged = Stream.concat(
+                                defaultVal.getSerialization() != null && defaultVal.getSerialization().getSensitiveKeyWords() != null
+                                        ? defaultVal.getSerialization().getSensitiveKeyWords().stream()
+                                        : Stream.<String>empty(),
+                                monitoringConfigOverride.getSerialization().getSensitiveKeyWords().stream()
+                        ).collect(java.util.stream.Collectors.toCollection(HashSet::new));
+
+                        defaultVal.getSerialization().setSensitiveKeyWords(merged);
+                    }
+
 
                     if (monitoringConfigOverride.getSerialization().getMaxElementCollection() != null) {
                         defaultVal.getSerialization().setMaxElementCollection(monitoringConfigOverride.getSerialization().getMaxElementCollection());

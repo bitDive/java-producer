@@ -1,16 +1,13 @@
 package io.bitdive.parent.trasirovka.agent.byte_buddy_agent.db;
 
 import com.github.f4b6a3.uuid.UuidCreator;
-import io.bitdive.parent.parserConfig.YamlParserConfig;
 import io.bitdive.parent.trasirovka.agent.utils.ContextManager;
 import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import io.bitdive.parent.trasirovka.agent.utils.ReflectionUtils;
 import net.bytebuddy.agent.builder.AgentBuilder;
-import net.bytebuddy.agent.builder.ResettableClassFileTransformer;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.matcher.ElementMatchers;
 
-import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Method;
 import java.time.OffsetDateTime;
 import java.util.Collections;
@@ -18,15 +15,59 @@ import java.util.Map;
 
 import static io.bitdive.parent.message_producer.MessageService.sendMessageDBEnd;
 import static io.bitdive.parent.message_producer.MessageService.sendMessageDBStart;
-import static io.bitdive.parent.trasirovka.agent.utils.DataUtils.getaNullThrowable;
 import static io.bitdive.parent.trasirovka.agent.utils.MessageTypeEnum.NEO4J_DB_END;
 import static io.bitdive.parent.trasirovka.agent.utils.MessageTypeEnum.NEO4J_DB_START;
 
 public class ByteBuddyAgentNeo4j {
 
-    public static ResettableClassFileTransformer init(Instrumentation inst) {
-        return new AgentBuilder.Default()
-                .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
+    public interface BitDiveNeo4jQueryView {
+        String bitdiveText();
+        Object bitdiveParameters();
+    }
+
+    @SuppressWarnings("rawtypes")
+    public interface BitDiveNeo4jAsMapView {
+        Map bitdiveAsMap();
+    }
+
+    public static AgentBuilder init(AgentBuilder agentBuilder)  {
+        return agentBuilder
+                // Query view: avoid ReflectionUtils.invokeMethod(first,"text"/"parameters")
+                .type(ElementMatchers.named("org.neo4j.driver.Query").and(ElementMatchers.not(ElementMatchers.isInterface())))
+                .transform((builder, td, cl, module, pd) -> {
+                    try {
+                        net.bytebuddy.description.method.MethodDescription.InDefinedShape mText =
+                                td.getDeclaredMethods().filter(ElementMatchers.named("text").and(ElementMatchers.takesArguments(0))).getOnly();
+                        net.bytebuddy.description.method.MethodDescription.InDefinedShape mParams =
+                                td.getDeclaredMethods().filter(ElementMatchers.named("parameters").and(ElementMatchers.takesArguments(0))).getOnly();
+                        return builder
+                                .implement(BitDiveNeo4jQueryView.class)
+                                .defineMethod("bitdiveText", String.class, net.bytebuddy.description.modifier.Visibility.PUBLIC)
+                                .intercept(net.bytebuddy.implementation.MethodCall.invoke(mText))
+                                .defineMethod("bitdiveParameters", Object.class, net.bytebuddy.description.modifier.Visibility.PUBLIC)
+                                .intercept(net.bytebuddy.implementation.MethodCall.invoke(mParams));
+                    } catch (Exception e) {
+                        return builder;
+                    }
+                })
+
+                // Value view: asMap()
+                .type(ElementMatchers.nameStartsWith("org.neo4j.driver")
+                        .and(ElementMatchers.not(ElementMatchers.isInterface()))
+                        .and(ElementMatchers.declaresMethod(ElementMatchers.named("asMap").and(ElementMatchers.takesArguments(0)))))
+                .transform((builder, td, cl, module, pd) -> {
+                    try {
+                        net.bytebuddy.description.method.MethodDescription.InDefinedShape mAsMap =
+                                td.getDeclaredMethods().filter(ElementMatchers.named("asMap").and(ElementMatchers.takesArguments(0))).getOnly();
+                        return builder
+                                .implement(BitDiveNeo4jAsMapView.class)
+                                .defineMethod("bitdiveAsMap", Map.class, net.bytebuddy.description.modifier.Visibility.PUBLIC)
+                                .intercept(net.bytebuddy.implementation.MethodCall.invoke(mAsMap));
+                    } catch (Exception e) {
+                        return builder;
+                    }
+                })
+
                 .type(ElementMatchers.hasSuperType(
                         ElementMatchers.named("org.neo4j.driver.internal.AbstractQueryRunner")))
                 .transform((builder, td, cl, module, pd) ->
@@ -35,8 +76,7 @@ public class ByteBuddyAgentNeo4j {
                                         .and(ElementMatchers.takesArguments(1))
                                 )
                         )
-                )
-                .installOn(inst);
+                );
     }
 
     public static class Neo4jAdvice {
@@ -121,22 +161,19 @@ public class ByteBuddyAgentNeo4j {
             }
         }
 
+        @SuppressWarnings("unchecked")
         public static void extractedParametrs(Object[] args, MethodContext ctx) throws Exception {
             if (args.length > 0 && args[0] != null) {
                 Object first = args[0];
-                String className = first.getClass().getName();
 
-                if ("org.neo4j.driver.Query".equals(className)) {
-                    ctx.statement = (String) ReflectionUtils.invokeMethod(first, "text");
-                    Object paramsObj = ReflectionUtils.invokeMethod(first, "parameters");
-                    if (paramsObj != null) {
-                        try {
-                            ctx.parameters = (Map<String, Object>) ReflectionUtils.invokeMethod(paramsObj, "asMap");
-                        } catch (Exception ex) {
-                            if (paramsObj instanceof Map) {
-                                ctx.parameters = (Map<String, Object>) paramsObj;
-                            }
-                        }
+                if (first instanceof BitDiveNeo4jQueryView) {
+                    BitDiveNeo4jQueryView q = (BitDiveNeo4jQueryView) first;
+                    ctx.statement = q.bitdiveText();
+                    Object paramsObj = q.bitdiveParameters();
+                    if (paramsObj instanceof BitDiveNeo4jAsMapView) {
+                        ctx.parameters = (Map<String, Object>) ((BitDiveNeo4jAsMapView) paramsObj).bitdiveAsMap();
+                    } else if (paramsObj instanceof Map) {
+                        ctx.parameters = (Map<String, Object>) paramsObj;
                     }
                 } else if (first instanceof String) {
                     ctx.statement = (String) first;
@@ -182,7 +219,7 @@ public class ByteBuddyAgentNeo4j {
                             ctx.traceId,
                             ctx.spanId,
                             OffsetDateTime.now(),
-                            getaNullThrowable(t),
+                            ReflectionUtils.objectToString(t),
                             NEO4J_DB_END
                     );
                 } catch (Exception e) {

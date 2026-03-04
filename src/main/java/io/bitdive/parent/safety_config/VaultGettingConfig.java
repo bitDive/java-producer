@@ -19,7 +19,6 @@ public class VaultGettingConfig {
     private static final String ENCRYPTION_KEY_PATH = "transit/export/encryption-key/encryption-key";
     private static final String SIGNING_KEY_PATH = "transit/export/signing-key/signing-key";
 
-
     private static final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
 
     public static Vault initVault() {
@@ -72,7 +71,8 @@ public class VaultGettingConfig {
                 .map(Integer::parseInt)
                 .max(Integer::compareTo)
                 .orElse(null);
-        addKeySecretKey(maxKeyId, response.getDataObject().get("keys").asObject().get(String.valueOf(maxKeyId)).asString());
+        addKeySecretKey(maxKeyId,
+                response.getDataObject().get("keys").asObject().get(String.valueOf(maxKeyId)).asString());
     }
 
     public static void updateRSAPrivateKey() throws Exception {
@@ -81,7 +81,32 @@ public class VaultGettingConfig {
                 .map(Integer::parseInt)
                 .max(Integer::compareTo)
                 .orElse(null);
-        addKeyPrivateKey(maxKeyId, response.getDataObject().get("keys").asObject().get(String.valueOf(maxKeyId)).asString());
+        addKeyPrivateKey(maxKeyId,
+                response.getDataObject().get("keys").asObject().get(String.valueOf(maxKeyId)).asString());
+    }
+
+    /**
+     * КРИТИЧНО: Остановка scheduler для предотвращения утечек потоков.
+     * Должен вызываться при shutdown приложения.
+     */
+    public static void shutdown() {
+        if (scheduler != null && !scheduler.isShutdown()) {
+            scheduler.shutdown();
+            try {
+                if (!scheduler.awaitTermination(10, TimeUnit.SECONDS)) {
+                    scheduler.shutdownNow();
+                    if (LoggerStatusContent.isDebug()) {
+                        System.out.println("VaultGettingConfig scheduler forced shutdown");
+                    }
+                }
+            } catch (InterruptedException e) {
+                scheduler.shutdownNow();
+                Thread.currentThread().interrupt();
+                if (LoggerStatusContent.isErrorsOrDebug()) {
+                    System.err.println("VaultGettingConfig scheduler shutdown interrupted");
+                }
+            }
+        }
     }
 
 }

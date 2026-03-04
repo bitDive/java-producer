@@ -11,10 +11,9 @@ import java.lang.instrument.Instrumentation;
 
 public class ByteBuddyAgentCoyoteInputStream {
 
-    public static ResettableClassFileTransformer init(Instrumentation instrumentation) {
+    public static AgentBuilder  init(AgentBuilder agentBuilder) {
         try {
-            return new AgentBuilder.Default()
-                    .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
+            return agentBuilder
                     .type(ElementMatchers.named("org.apache.catalina.connector.CoyoteInputStream"))
                     .transform((builder, typeDescription, classLoader, module, dd) ->
                             builder
@@ -24,8 +23,7 @@ public class ByteBuddyAgentCoyoteInputStream {
                                     .visit(Advice.to(ReadBytesAdvice.class).on(
                                             ElementMatchers.named("read").and(ElementMatchers.takesArguments(3))
                                     ))
-                    )
-                    .installOn(instrumentation);
+                    );
         } catch (Exception e) {
             if (LoggerStatusContent.isErrorsOrDebug()) {
                 System.err.println("ByteBuddyAgentCoyoteInputStream init error: " + e.getMessage());
