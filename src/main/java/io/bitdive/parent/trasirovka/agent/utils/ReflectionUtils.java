@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.*;
+import com.fasterxml.jackson.databind.introspect.NopAnnotationIntrospector;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.jsontype.impl.LaissezFaireSubTypeValidator;
 import com.fasterxml.jackson.databind.module.SimpleModule;
@@ -23,8 +24,6 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.*;
 import java.util.List;
-
-import static com.fasterxml.jackson.databind.MapperFeature.USE_ANNOTATIONS;
 
 public class ReflectionUtils {
     private static final String INDICATOR = "...";
@@ -58,7 +57,8 @@ public class ReflectionUtils {
 
     ) {
 
-        mapper= JsonMapper.builder().disable(USE_ANNOTATIONS).build();
+        mapper = JsonMapper.builder().build();
+
 
         AfterburnerModule ab =new AfterburnerModule();
         ab.setUseValueClassLoader(true);
@@ -101,11 +101,13 @@ public class ReflectionUtils {
         LambdaSerializer.setSerializerModifier(new LambdaSerializerModifier());
         mapper.registerModule(LambdaSerializer);
 
-        // Модификатор для исключения serialVersionUID из сериализации
-        // (предотвращает InaccessibleObjectException в Java 9+ модулях)
         SimpleModule serialVersionUidExclusion = new SimpleModule();
         serialVersionUidExclusion.setSerializerModifier(new SerialVersionUidExclusionModifier());
         mapper.registerModule(serialVersionUidExclusion);
+
+        /*SimpleModule cycleBreakingModule = new SimpleModule();
+        cycleBreakingModule.setSerializerModifier(new CycleBreakingSerializerModifier());
+        mapper.registerModule(cycleBreakingModule);*/
 
 
         SimpleModule imageModule = new SimpleModule();
@@ -127,6 +129,10 @@ public class ReflectionUtils {
         mapper.registerModule(new JavaTimeModule());
         mapper.registerModule(new Jdk8Module());
 
+        AnnotationIntrospector serAi = new JsonIgnoreOnlySerializationIntrospector();
+        AnnotationIntrospector deserAi = mapper.getDeserializationConfig().getAnnotationIntrospector();
+
+        mapper.setAnnotationIntrospectors(serAi, deserAi);
 
         Optional.ofNullable(HibernateModuleLoader.registerHibernateModule())
                 .ifPresent(moduleHibernate ->
@@ -231,7 +237,7 @@ public class ReflectionUtils {
      * Creates a fallback ObjectMapper without Afterburner module.
      */
     private static ObjectMapper createMapperWithoutAfterburner() {
-        ObjectMapper fallbackMapper = JsonMapper.builder().disable(USE_ANNOTATIONS).build();
+        ObjectMapper fallbackMapper = JsonMapper.builder().build();
         
         fallbackMapper.setVisibility(
                 fallbackMapper.getVisibilityChecker()
@@ -247,6 +253,16 @@ public class ReflectionUtils {
         fallbackMapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
         fallbackMapper.registerModule(new JavaTimeModule());
         fallbackMapper.registerModule(new Jdk8Module());
+
+        fallbackMapper.setAnnotationIntrospectors(
+                new JsonIgnoreOnlySerializationIntrospector(),
+                NopAnnotationIntrospector.instance
+        );
+
+        // Также защищаемся от циклов во fallback-мэппере (без Afterburner).
+        SimpleModule cycleBreakingModule = new SimpleModule();
+        cycleBreakingModule.setSerializerModifier(new CycleBreakingSerializerModifier());
+        fallbackMapper.registerModule(cycleBreakingModule);
         
         // Copy default typing configuration from main mapper if available
         if (mapper != null) {

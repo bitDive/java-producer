@@ -63,7 +63,8 @@ public class MonitoringFileWriterTest {
                 });
         }
     }
-    
+
+
     // @Test
     public void testAsyncWrite() throws Exception {
         // Тест асинхронной записи
