@@ -6,6 +6,7 @@ import io.bitdive.parent.trasirovka.agent.utils.LoggerStatusContent;
 import io.bitdive.parent.trasirovka.agent.utils.OutgoingRestTemplateBodyContext;
 import io.bitdive.parent.trasirovka.agent.utils.ReflectionUtils;
 import io.bitdive.parent.utils.Pair;
+import net.bytebuddy.asm.Advice;
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.description.method.MethodDescription;
 import net.bytebuddy.description.method.MethodList;
@@ -14,7 +15,6 @@ import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.implementation.FieldAccessor;
 import net.bytebuddy.implementation.MethodCall;
 import net.bytebuddy.implementation.MethodDelegation;
-import net.bytebuddy.implementation.bind.annotation.Origin;
 import net.bytebuddy.implementation.bind.annotation.RuntimeType;
 import net.bytebuddy.implementation.bind.annotation.SuperCall;
 import net.bytebuddy.implementation.bind.annotation.This;
@@ -192,9 +192,9 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
                                 .defineMethod("bitdiveHeaders", Object.class, Visibility.PUBLIC)
                                 .intercept(MethodCall.invoke(mGetHeaders))
 
-                                // execute() -> наш интерцептор
-                                .method(named("execute").and(takesArguments(0)))
-                                .intercept(MethodDelegation.to(ResponseWeRestTemplateInterceptor.class));
+                                // execute() -> Advice (работает и на final методах в новом Spring)
+                                .visit(Advice.to(ExecuteAdvice.class)
+                                        .on(named("execute").and(takesArguments(0))));
 
                         // method string
                         if (mGetMethodValue != null) {
@@ -427,39 +427,71 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
         }
     }
 
+    // =========================
+    // Advice для execute() — работает и на final методах (новый Spring 6.2+)
+    // =========================
+
+    /**
+     * Advice-класс для перехвата ClientHttpRequest.execute().
+     * В отличие от MethodDelegation, Advice инжектит байткод прямо в тело метода,
+     * поэтому работает даже если execute() объявлен как final.
+     */
+    public static class ExecuteAdvice {
+
+        /**
+         * Вызывается ДО оригинального execute().
+         * Возвращает контекст (Object[]) который передаётся в onExit через @Advice.Enter.
+         */
+        @Advice.OnMethodEnter(suppress = Throwable.class)
+        public static Object[] onEnter(@Advice.This Object request) {
+            return ResponseWeRestTemplateInterceptor.beforeExecute(request);
+        }
+
+        /**
+         * Вызывается ПОСЛЕ оригинального execute() (или при исключении).
+         */
+        @Advice.OnMethodExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void onExit(@Advice.This Object request,
+                                  @Advice.Return Object response,
+                                  @Advice.Thrown Throwable thrown,
+                                  @Advice.Enter Object[] ctx) {
+            ResponseWeRestTemplateInterceptor.afterExecute(ctx, response, thrown);
+        }
+    }
+
+    // =========================
+    // Interceptor logic (вызывается из ExecuteAdvice)
+    // =========================
+
     public static class ResponseWeRestTemplateInterceptor {
 
-        @RuntimeType
-        public static Object intercept(@Origin Method origin,
-                                       @SuperCall Callable<?> zuper,
-                                       @This Object request) throws Throwable {
+        // ctx indices
+        private static final int CTX_URL = 0;
+        private static final int CTX_HTTP_METHOD = 1;
+        private static final int CTX_HEADERS = 2;
+        private static final int CTX_BODY = 3;
+        private static final int CTX_SERVICE_CALL_ID = 4;
+        private static final int CTX_DATE_START = 5;
 
-            if (LoggerStatusContent.getEnabledProfile()) return zuper.call();
-            if (ContextManager.getMessageIdQueueNew().isEmpty()) return zuper.call();
-
-            Object retVal = null;
-            Throwable thrown = null;
-
-            String url = null;
-            String httpMethod = null;
-            Object headers = null;
-            String body = null;
-
-            String responseStatus = null;
-            Object responseHeaders = null;
-            String responseBody = null;
-
-            String serviceCallId = UuidCreator.getTimeBased().toString();
-
-            OffsetDateTime dateStart = OffsetDateTime.now();
-            OffsetDateTime dateEnd = null;
-
-            String errorCall = null;
-
-            boolean successLogin = false;
-
-            // -------- request (через интерфейс) --------
+        /**
+         * Вызывается ДО execute(). Захватывает request info и добавляет tracing headers.
+         * @return Object[] контекст для afterExecute, или null если перехват не нужен.
+         */
+        public static Object[] beforeExecute(Object request) {
             try {
+                if (LoggerStatusContent.getEnabledProfile()) return null;
+                if (ContextManager.getMessageIdQueueNew().isEmpty()) return null;
+
+                String url = null;
+                String httpMethod = null;
+                Object headers = null;
+                String body = null;
+                boolean successLogin = false;
+
+                String serviceCallId = UuidCreator.getTimeBased().toString();
+                OffsetDateTime dateStart = OffsetDateTime.now();
+
+                // -------- request (через интерфейс) --------
                 if (request instanceof BitDiveSpringHttpRequestView) {
                     BitDiveSpringHttpRequestView rq = (BitDiveSpringHttpRequestView) request;
 
@@ -467,8 +499,16 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
                     httpMethod = safeString(rq.bitdiveMethodString());
                     headers = rq.bitdiveHeaders();
 
+                    // Сначала пробуем получить body из OutgoingRestTemplateBodyContext
+                    // (работает и в старом, и в новом Spring)
                     Object capturedBody = OutgoingRestTemplateBodyContext.getAndClear();
-                    body = (capturedBody != null) ? ReflectionUtils.objectToString(capturedBody) : "";
+                    if (capturedBody != null) {
+                        body = ReflectionUtils.objectToString(capturedBody);
+                    } else {
+                        // Фолбэк: пробуем достать body из внутренних полей request
+                        body = tryExtractRequestBody(request);
+                    }
+                    if (body == null) body = "";
 
                     if (getFirstHeader(headers, "x-BitDiv-custom-span-id") == null) {
                         successLogin = true;
@@ -477,82 +517,165 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
                         addHeader(headers, "x-BitDiv-custom-service-call-id", serviceCallId);
                     }
                 }
+
+                if (!successLogin) return null;
+
+                return new Object[] {
+                        url,            // CTX_URL
+                        httpMethod,     // CTX_HTTP_METHOD
+                        headers,        // CTX_HEADERS
+                        body,           // CTX_BODY
+                        serviceCallId,  // CTX_SERVICE_CALL_ID
+                        dateStart       // CTX_DATE_START
+                };
+
             } catch (Exception e) {
                 if (LoggerStatusContent.isErrorsOrDebug()) {
-                    System.err.println("Error processing ClientHttpRequest via interface: " + e);
+                    System.err.println("Error in beforeExecute: " + e);
                 }
+                return null;
             }
+        }
 
-            // -------- execute + finally --------
+        /**
+         * Вызывается ПОСЛЕ execute(). Обрабатывает response и отправляет данные.
+         */
+        public static void afterExecute(Object[] ctx, Object response, Throwable thrown) {
             try {
-                retVal = zuper.call();
-                return retVal;
-            } catch (Throwable t) {
-                thrown = t;
-                throw t;
-            } finally {
                 OutgoingRestTemplateBodyContext.clearSafely();
 
-                // ✅ ВАЖНО: никаких return в finally
-                if (!successLogin) {
-                    // ничего не отправляем
-                } else {
-                    dateEnd = OffsetDateTime.now();
+                if (ctx == null) return;
 
-                    // -------- response (через интерфейс) --------
-                    if (retVal instanceof BitDiveSpringHttpResponseView) {
-                        try {
-                            BitDiveSpringHttpResponseView resp = (BitDiveSpringHttpResponseView) retVal;
+                String url = (String) ctx[CTX_URL];
+                String httpMethod = (String) ctx[CTX_HTTP_METHOD];
+                Object headers = ctx[CTX_HEADERS];
+                String body = (String) ctx[CTX_BODY];
+                String serviceCallId = (String) ctx[CTX_SERVICE_CALL_ID];
+                OffsetDateTime dateStart = (OffsetDateTime) ctx[CTX_DATE_START];
 
-                            responseStatus = String.valueOf(resp.bitdiveStatusCodeValue());
-                            responseHeaders = resp.bitdiveHeaders();
+                OffsetDateTime dateEnd = OffsetDateTime.now();
 
-                            // форсим кеширование тела
-                            try (InputStream ignored = (InputStream) resp.bitdiveGetBody()) {
-                                // no-op
-                            } catch (Exception ignored) {
-                            }
+                String responseStatus = null;
+                Object responseHeaders = null;
+                String responseBody = null;
+                String errorCall = null;
 
-                            byte[] responseBodyBytes = resp.bitdiveCachedBody();
-                            Charset charset = parseCharsetFromHeaders(responseHeaders);
-                            if (charset == null) charset = Charset.defaultCharset();
+                // -------- response (через интерфейс) --------
+                if (response instanceof BitDiveSpringHttpResponseView) {
+                    try {
+                        BitDiveSpringHttpResponseView resp = (BitDiveSpringHttpResponseView) response;
 
-                            responseBody = normalizeResponseBodyBytes(responseBodyBytes, responseHeaders, charset);
+                        responseStatus = String.valueOf(resp.bitdiveStatusCodeValue());
+                        responseHeaders = resp.bitdiveHeaders();
 
-                        } catch (Exception e) {
-                            if (LoggerStatusContent.isErrorsOrDebug()) {
-                                System.err.println("Error processing ClientHttpResponse via interface: " + e);
-                            }
+                        // форсим кеширование тела
+                        try (InputStream ignored = (InputStream) resp.bitdiveGetBody()) {
+                            // no-op
+                        } catch (Exception ignored) {
+                        }
+
+                        byte[] responseBodyBytes = resp.bitdiveCachedBody();
+                        Charset charset = parseCharsetFromHeaders(responseHeaders);
+                        if (charset == null) charset = Charset.defaultCharset();
+
+                        responseBody = normalizeResponseBodyBytes(responseBodyBytes, responseHeaders, charset);
+
+                    } catch (Exception e) {
+                        if (LoggerStatusContent.isErrorsOrDebug()) {
+                            System.err.println("Error processing ClientHttpResponse via interface: " + e);
                         }
                     }
+                }
 
-                    if (thrown != null) {
-                        errorCall = ReflectionUtils.objectToString(thrown);
-                    }
+                if (thrown != null) {
+                    errorCall = ReflectionUtils.objectToString(thrown);
+                }
 
-                    if (url != null && !url.contains("eureka/apps")) {
-                        sendMessageRequestUrl(
-                                UuidCreator.getTimeBased().toString(),
-                                ContextManager.getTraceId(),
-                                ContextManager.getSpanId(),
-                                dateStart,
-                                dateEnd,
-                                url,
-                                httpMethod,
-                                ReflectionUtils.objectToString(headers),
-                                body,
-                                responseStatus,
-                                ReflectionUtils.objectToString(responseHeaders),
-                                responseBody,
-                                errorCall,
-                                ContextManager.getMessageIdQueueNew(),
-                                serviceCallId
-                        );
-                    }
+                if (url != null && !url.contains("eureka/apps")) {
+                    sendMessageRequestUrl(
+                            UuidCreator.getTimeBased().toString(),
+                            ContextManager.getTraceId(),
+                            ContextManager.getSpanId(),
+                            dateStart,
+                            dateEnd,
+                            url,
+                            httpMethod,
+                            ReflectionUtils.objectToString(headers),
+                            body,
+                            responseStatus,
+                            ReflectionUtils.objectToString(responseHeaders),
+                            responseBody,
+                            errorCall,
+                            ContextManager.getMessageIdQueueNew(),
+                            serviceCallId
+                    );
+                }
+
+            } catch (Exception e) {
+                if (LoggerStatusContent.isErrorsOrDebug()) {
+                    System.err.println("Error in afterExecute: " + e);
                 }
             }
         }
 
+        /**
+         * Пробуем достать request body из внутренних полей (рефлексия).
+         * Поддерживает:
+         * - Старый Spring: поле bodyStream (FastByteArrayOutputStream / ByteArrayOutputStream)
+         * - Новый Spring: поле body (StreamingHttpOutputMessage.Body) — не можем прочитать его
+         *   содержимое, но можем детектить его наличие.
+         * - Поле bufferedOutput / buf / и т.д. у разных реализаций.
+         */
+        private static String tryExtractRequestBody(Object request) {
+            try {
+                // Ищем bodyStream (старый Spring: FastByteArrayOutputStream / ByteArrayOutputStream)
+                Object bodyStream = getFieldValueRecursive(request, "bodyStream");
+                if (bodyStream instanceof ByteArrayOutputStream) {
+                    byte[] bytes = ((ByteArrayOutputStream) bodyStream).toByteArray();
+                    if (bytes != null && bytes.length > 0) {
+                        return new String(bytes, 0, Math.min(bytes.length, MAX_BODY_BYTES));
+                    }
+                }
+                if (bodyStream != null) {
+                    // FastByteArrayOutputStream — пробуем через toByteArray() рефлексией
+                    try {
+                        Method toByteArray = bodyStream.getClass().getMethod("toByteArray");
+                        byte[] bytes = (byte[]) toByteArray.invoke(bodyStream);
+                        if (bytes != null && bytes.length > 0) {
+                            return new String(bytes, 0, Math.min(bytes.length, MAX_BODY_BYTES));
+                        }
+                    } catch (Exception ignored) {
+                    }
+                }
+
+                // Ищем bufferedOutput (некоторые реализации)
+                Object bufferedOutput = getFieldValueRecursive(request, "bufferedOutput");
+                if (bufferedOutput instanceof ByteArrayOutputStream) {
+                    byte[] bytes = ((ByteArrayOutputStream) bufferedOutput).toByteArray();
+                    if (bytes != null && bytes.length > 0) {
+                        return new String(bytes, 0, Math.min(bytes.length, MAX_BODY_BYTES));
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+            return null;
+        }
+
+        private static Object getFieldValueRecursive(Object target, String fieldName) {
+            Class<?> c = target.getClass();
+            while (c != null && c != Object.class) {
+                try {
+                    Field f = c.getDeclaredField(fieldName);
+                    f.setAccessible(true);
+                    return f.get(target);
+                } catch (NoSuchFieldException e) {
+                    c = c.getSuperclass();
+                } catch (Exception e) {
+                    return null;
+                }
+            }
+            return null;
+        }
 
         private static String safeString(String s) {
             return s == null ? "" : s;
