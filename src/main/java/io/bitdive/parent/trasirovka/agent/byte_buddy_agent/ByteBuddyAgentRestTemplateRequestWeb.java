@@ -24,6 +24,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.net.URI;
 import java.nio.charset.Charset;
 import java.time.OffsetDateTime;
 import java.util.*;
@@ -144,7 +145,7 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
             }
         }
 
-        // 2) Request: интерфейс + перехват execute()
+        // 2) Request: интерфейс (БЕЗ перехвата execute — он вынесен в отдельный transform #3)
         try {
             agentBuilderTransform = agentBuilderTransform
                     .type(hasSuperType(named("org.springframework.http.client.ClientHttpRequest"))
@@ -164,6 +165,11 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
                                 findMethodInHierarchy(td, "getHeaders", 0);
 
                         if (mGetURI == null || (mGetMethodValue == null && mGetMethod == null) || mGetHeaders == null) {
+                            if (LoggerStatusContent.isErrorsOrDebug()) {
+                                System.err.println("BitDive: SKIP ClientHttpRequest (missing methods): " + td.getName()
+                                        + " getURI=" + (mGetURI != null) + " getMethodValue=" + (mGetMethodValue != null)
+                                        + " getMethod=" + (mGetMethod != null) + " getHeaders=" + (mGetHeaders != null));
+                            }
                             return builder;
                         }
 
@@ -175,7 +181,7 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
                         }
 
                         if (LoggerStatusContent.isErrorsOrDebug()) {
-                            System.err.println("BitDive: instrument ClientHttpRequest: " + td.getName());
+                            System.err.println("BitDive: instrument ClientHttpRequest (interface only): " + td.getName());
                         }
 
                         builder = builder
@@ -190,11 +196,7 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
 
                                 // Object bitdiveHeaders() { return getHeaders(); }
                                 .defineMethod("bitdiveHeaders", Object.class, Visibility.PUBLIC)
-                                .intercept(MethodCall.invoke(mGetHeaders))
-
-                                // execute() -> Advice (работает и на final методах в новом Spring)
-                                .visit(Advice.to(ExecuteAdvice.class)
-                                        .on(named("execute").and(takesArguments(0))));
+                                .intercept(MethodCall.invoke(mGetHeaders));
 
                         // method string
                         if (mGetMethodValue != null) {
@@ -214,9 +216,42 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
                     });
 
         } catch (Exception e) {
-            if (LoggerStatusContent.isErrorsOrDebug()) {
-                System.err.println("ClientHttpRequest transform failed: " + e);
-            }
+            System.err.println("BitDive: ClientHttpRequest interface transform failed: " + e);
+        }
+
+        // 3) ОТДЕЛЬНЫЙ перехват execute() через Advice — на AbstractClientHttpRequest напрямую
+        //    Advice инжектит байткод прямо в метод, работает даже если execute() — final
+        try {
+            agentBuilderTransform = agentBuilderTransform
+                    .type(hasSuperType(named("org.springframework.http.client.ClientHttpRequest"))
+                            .and(not(isInterface()))
+                            .and(declaresMethod(named("execute").and(takesArguments(0)))))
+                    .transform((builder, td, cl, module, dd) -> {
+                        if (LoggerStatusContent.isErrorsOrDebug()) {
+                            System.err.println("BitDive: applying execute() Advice to: " + td.getName());
+                        }
+                        return builder.visit(Advice.to(ExecuteAdvice.class)
+                                .on(named("execute").and(takesArguments(0))));
+                    });
+        } catch (Exception e) {
+            System.err.println("BitDive: execute() Advice transform failed: " + e);
+        }
+
+        // 4) FALLBACK: Advice на RestTemplate.doExecute() — ловит ВСЕ исходящие вызовы
+        //    Работает если перехват execute() на ClientHttpRequest не сработал.
+        //    Поддерживает и старую (4 args) и новую (5 args) сигнатуру doExecute.
+        try {
+            agentBuilderTransform = agentBuilderTransform
+                    .type(named("org.springframework.web.client.RestTemplate"))
+                    .transform((builder, td, cl, module, dd) -> {
+                        if (LoggerStatusContent.isErrorsOrDebug()) {
+                            System.err.println("BitDive: applying doExecute() Advice to RestTemplate: " + td.getName());
+                        }
+                        return builder.visit(Advice.to(DoExecuteAdvice.class)
+                                .on(named("doExecute")));
+                    });
+        } catch (Exception e) {
+            System.err.println("BitDive: RestTemplate doExecute() Advice transform failed: " + e);
         }
 
         return Pair.createPair(agentBuilder, agentBuilderTransform);
@@ -427,29 +462,17 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
         }
     }
 
-    // =========================
-    // Advice для execute() — работает и на final методах (новый Spring 6.2+)
-    // =========================
-
     /**
-     * Advice-класс для перехвата ClientHttpRequest.execute().
-     * В отличие от MethodDelegation, Advice инжектит байткод прямо в тело метода,
-     * поэтому работает даже если execute() объявлен как final.
+     * Advice для перехвата ClientHttpRequest.execute().
+     * Инжектит байткод прямо в тело метода — работает и на final.
      */
     public static class ExecuteAdvice {
 
-        /**
-         * Вызывается ДО оригинального execute().
-         * Возвращает контекст (Object[]) который передаётся в onExit через @Advice.Enter.
-         */
         @Advice.OnMethodEnter(suppress = Throwable.class)
         public static Object[] onEnter(@Advice.This Object request) {
             return ResponseWeRestTemplateInterceptor.beforeExecute(request);
         }
 
-        /**
-         * Вызывается ПОСЛЕ оригинального execute() (или при исключении).
-         */
         @Advice.OnMethodExit(onThrowable = Throwable.class, suppress = Throwable.class)
         public static void onExit(@Advice.This Object request,
                                   @Advice.Return Object response,
@@ -459,11 +482,39 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
         }
     }
 
+    /**
+     * FALLBACK Advice для RestTemplate.doExecute().
+     * Ловит ВСЕ исходящие вызовы RestTemplate, если execute() на ClientHttpRequest не перехвачен.
+     * Поддерживает обе сигнатуры:
+     *   - Старую: doExecute(URI, HttpMethod, RequestCallback, ResponseExtractor)
+     *   - Новую:  doExecute(URI, String, HttpMethod, RequestCallback, ResponseExtractor)
+     */
+    public static class DoExecuteAdvice {
+
+        @Advice.OnMethodEnter(suppress = Throwable.class)
+        public static Object[] onEnter(@Advice.AllArguments Object[] args) {
+            return ResponseWeRestTemplateInterceptor.beforeDoExecute(args);
+        }
+
+        @Advice.OnMethodExit(onThrowable = Throwable.class, suppress = Throwable.class)
+        public static void onExit(@Advice.Return Object result,
+                                  @Advice.Thrown Throwable thrown,
+                                  @Advice.Enter Object[] ctx) {
+            ResponseWeRestTemplateInterceptor.afterDoExecute(ctx, thrown);
+        }
+    }
+
     // =========================
     // Interceptor logic (вызывается из ExecuteAdvice)
     // =========================
 
     public static class ResponseWeRestTemplateInterceptor {
+
+        /**
+         * ThreadLocal флаг для предотвращения двойного срабатывания
+         * (когда и ExecuteAdvice, и DoExecuteAdvice срабатывают на одном вызове).
+         */
+        private static final ThreadLocal<Boolean> EXECUTE_INTERCEPTED = new ThreadLocal<>();
 
         // ctx indices
         private static final int CTX_URL = 0;
@@ -611,10 +662,121 @@ public class ByteBuddyAgentRestTemplateRequestWeb {
                     );
                 }
 
+                // Отмечаем, что execute() успешно перехватил — doExecute fallback пропустит
+                EXECUTE_INTERCEPTED.set(Boolean.TRUE);
+
             } catch (Exception e) {
+                // При ошибке тоже ставим флаг, чтобы doExecute не дублировал
+                EXECUTE_INTERCEPTED.set(Boolean.TRUE);
                 if (LoggerStatusContent.isErrorsOrDebug()) {
                     System.err.println("Error in afterExecute: " + e);
                 }
+            }
+        }
+
+        // =========================
+        // FALLBACK: doExecute()
+        // =========================
+
+        /**
+         * Вызывается ДО RestTemplate.doExecute().
+         * Если execute() уже перехвачен — пропускаем (дедупликация).
+         * Поддерживает:
+         *   Старую: doExecute(URI, HttpMethod, RequestCallback, ResponseExtractor)
+         *   Новую:  doExecute(URI, String, HttpMethod, RequestCallback, ResponseExtractor)
+         */
+        public static Object[] beforeDoExecute(Object[] args) {
+            try {
+                if (LoggerStatusContent.getEnabledProfile()) return null;
+                if (ContextManager.getMessageIdQueueNew().isEmpty()) return null;
+
+                // Достаём URL
+                URI uri = (args.length > 0 && args[0] instanceof URI) ? (URI) args[0] : null;
+                String url = (uri != null) ? uri.toString() : "";
+
+                // Достаём HttpMethod (2-й арг в старом, 3-й в новом)
+                String httpMethod = "";
+                if (args.length == 4 && args[1] != null) {
+                    httpMethod = args[1].toString();
+                } else if (args.length >= 5 && args[2] != null) {
+                    httpMethod = args[2].toString();
+                }
+
+                String serviceCallId = UuidCreator.getTimeBased().toString();
+                OffsetDateTime dateStart = OffsetDateTime.now();
+
+                // Body из OutgoingRestTemplateBodyContext (если ещё не очищен)
+                Object capturedBody = OutgoingRestTemplateBodyContext.getAndClear();
+                String body = (capturedBody != null) ? ReflectionUtils.objectToString(capturedBody) : "";
+
+                return new Object[] {
+                        url,            // CTX_URL
+                        httpMethod,     // CTX_HTTP_METHOD
+                        null,           // CTX_HEADERS (недоступно из doExecute)
+                        body,           // CTX_BODY
+                        serviceCallId,  // CTX_SERVICE_CALL_ID
+                        dateStart       // CTX_DATE_START
+                };
+
+            } catch (Exception e) {
+                if (LoggerStatusContent.isErrorsOrDebug()) {
+                    System.err.println("Error in beforeDoExecute: " + e);
+                }
+                return null;
+            }
+        }
+
+        /**
+         * Вызывается ПОСЛЕ RestTemplate.doExecute().
+         * Пропускает если execute() уже обработал этот вызов.
+         */
+        public static void afterDoExecute(Object[] ctx, Throwable thrown) {
+            try {
+                if (ctx == null) return;
+
+                // Если execute() уже отработал — не дублируем
+                if (Boolean.TRUE.equals(EXECUTE_INTERCEPTED.get())) {
+                    return;
+                }
+
+                OutgoingRestTemplateBodyContext.clearSafely();
+
+                String url = (String) ctx[CTX_URL];
+                String httpMethod = (String) ctx[CTX_HTTP_METHOD];
+                String body = (String) ctx[CTX_BODY];
+                String serviceCallId = (String) ctx[CTX_SERVICE_CALL_ID];
+                OffsetDateTime dateStart = (OffsetDateTime) ctx[CTX_DATE_START];
+
+                OffsetDateTime dateEnd = OffsetDateTime.now();
+                String errorCall = (thrown != null) ? ReflectionUtils.objectToString(thrown) : null;
+
+                if (url != null && !url.contains("eureka/apps")) {
+                    sendMessageRequestUrl(
+                            UuidCreator.getTimeBased().toString(),
+                            ContextManager.getTraceId(),
+                            ContextManager.getSpanId(),
+                            dateStart,
+                            dateEnd,
+                            url,
+                            httpMethod,
+                            "",    // headers недоступны из doExecute
+                            body,
+                            "",    // responseStatus недоступен из doExecute
+                            "",    // responseHeaders
+                            "",    // responseBody
+                            errorCall,
+                            ContextManager.getMessageIdQueueNew(),
+                            serviceCallId
+                    );
+                }
+
+            } catch (Exception e) {
+                if (LoggerStatusContent.isErrorsOrDebug()) {
+                    System.err.println("Error in afterDoExecute: " + e);
+                }
+            } finally {
+                // Всегда чистим ThreadLocal — предотвращаем утечку
+                EXECUTE_INTERCEPTED.remove();
             }
         }
 
