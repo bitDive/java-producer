@@ -2,5 +2,5 @@ package io.bitdive.parent.utils;
 
 
 public class LibraryVersionBitDive {
-    public static final String version = "1.3.13";
+    public static final String version = "1.3.14-SNAPSHOT";
 }

@@ -22,8 +22,6 @@ import static net.bytebuddy.matcher.ElementMatchers.nameStartsWith;
 public class MonitoringStarting {
 
         public static void init() {
-                registerShutdownHook();
-
                 VaultGettingConfig.initVaultConnect();
                 LoggerStatusContent.initMonitoringDelay(Duration.ofSeconds(1));
                 Instrumentation instrumentation = ByteBuddyAgent.install();
@@ -81,10 +79,10 @@ public class MonitoringStarting {
                 agentStandardRetransformation = KafkaConsumerAgent.init(agentStandardRetransformation);
 
                 // Только автоматическая проверка драйверов БД - безопасная оптимизация
-                agentStandardRetransformation = OptimizedDbAgents.initCassandra(agentStandardRetransformation);
-                agentStandardRetransformation = OptimizedDbAgents.initMongo(agentStandardRetransformation);
-                agentStandardRetransformation = OptimizedDbAgents.initRedis(agentStandardRetransformation);
-                agentStandardRetransformation = OptimizedDbAgents.initNeo4j(agentStandardRetransformation);
+                agentStandardRetransformation = ByteBuddyAgentCassandra.init(agentStandardRetransformation);
+                agentStandardRetransformation = ByteBuddyAgentMongoDelegate.init(agentStandardRetransformation);
+                agentStandardRetransformation = ByteBuddyAgentRedis.init(agentStandardRetransformation);
+                agentStandardRetransformation = ByteBuddyAgentNeo4j.init(agentStandardRetransformation);
 
                 agentStandardRetransformation = ByteBuddyAgentOpenSearch.init(agentStandardRetransformation);
                 agentStandardRetransformation = ByteBuddyCachedOpenSearchResponse.init(agentStandardRetransformation);
@@ -132,33 +130,5 @@ public class MonitoringStarting {
                 } catch (IOException e) {
                         System.err.println("[BitDive] Failed to inject " + clazz.getName() + " into bootstrap CL: " + e);
                 }
-        }
-
-        /**
-         * КРИТИЧНО: Регистрация shutdown hook для корректной остановки всех ресурсов
-         */
-        private static void registerShutdownHook() {
-                Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-                        try {
-                                // Останавливаем Vault scheduler
-                                VaultGettingConfig.shutdown();
-                        } catch (Exception e) {
-                                System.err.println("Error shutting down Vault scheduler: " + e.getMessage());
-                        }
-
-                        try {
-                                // Останавливаем monitoring delay scheduler (если еще работает)
-                                LoggerStatusContent.shutdownScheduler();
-                        } catch (Exception e) {
-                                System.err.println("Error shutting down monitoring scheduler: " + e.getMessage());
-                        }
-
-                        try {
-                                // Останавливаем lazy DB agent loader scheduler
-                                LazyDbAgentLoader.shutdown();
-                        } catch (Exception e) {
-                                System.err.println("Error shutting down lazy DB agent loader: " + e.getMessage());
-                        }
-                }, "BitDive-Shutdown-Hook"));
         }
 }

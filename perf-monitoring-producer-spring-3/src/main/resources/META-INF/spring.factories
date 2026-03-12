@@ -3,3 +3,6 @@ org.springframework.context.ApplicationContextInitializer=\
 
 org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
   io.bitdive.SpringConfigProfiling
+
+org.springframework.boot.BootstrapRegistryInitializer=\
+  io.bitdive.BitDiveBootstrapRegistryInitializer

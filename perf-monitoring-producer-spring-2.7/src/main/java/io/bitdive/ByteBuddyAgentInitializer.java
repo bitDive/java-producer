@@ -18,6 +18,8 @@ import io.bitdive.shaded.com.fasterxml.jackson.databind.jsontype.impl.StdTypeRes
 import io.bitdive.shaded.com.fasterxml.jackson.databind.module.SimpleModule;
 import org.springframework.context.ApplicationContextInitializer;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.core.env.ConfigurableEnvironment;
 
 import java.util.*;
@@ -26,6 +28,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+@Order(Ordered.HIGHEST_PRECEDENCE)
 public class ByteBuddyAgentInitializer implements ApplicationContextInitializer<ConfigurableApplicationContext> {
     private static boolean initializeAgent = false;
 
