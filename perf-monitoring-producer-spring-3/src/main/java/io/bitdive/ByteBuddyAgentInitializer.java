@@ -54,6 +54,7 @@ public class ByteBuddyAgentInitializer implements ApplicationContextInitializer<
         }
         if (isTestEnvironment()) {
             YamlParserConfig.setWork(false);
+            return ;
         }
         ConfigForService configForServiceDTO = ByteBuddyConfigLoader.load();
 
@@ -102,6 +103,7 @@ public class ByteBuddyAgentInitializer implements ApplicationContextInitializer<
             if (!activeProfileSet.isEmpty()) {
                 initializeAgent = true;
                 YamlParserConfig.setWork(false);
+                return ;
             }
         }
 

@@ -117,8 +117,11 @@ public class ReflectionUtils {
         imageModule.addSerializer(Image.class, new AwtImagePlaceholderSerializer());
         mapper.registerModule(imageModule);
 
-        // Модуль для компактной сериализации исключений (Throwable)
-        mapper.registerModule(new ThrowableSerializerModule());
+        NestedValueSerializer nestedValueSerializer =
+                new MapperBackedNestedValueSerializer(() -> mapper);
+
+        mapper.registerModule(new ThrowableSerializerModule(1, nestedValueSerializer));
+
 
         mapper.registerModule(new FlowDataToPlaceholderModule());
         mapper.registerModule(new BitDiveClockModule());
